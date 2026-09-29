@@ -38,6 +38,8 @@ const queue = computed(() => state.value?.queue ?? []);
 const history = computed(() => state.value?.history ?? []);
 const volume = computed(() => state.value?.volume ?? 80);
 const autoDjEnabled = computed(() => state.value?.autoDjEnabled ?? true);
+const karaokeEnabled = computed(() => state.value?.karaokeEnabled ?? false);
+const karaokeLevel = computed(() => state.value?.karaokeLevel ?? 90);
 const outputMode = computed(() => state.value?.outputMode ?? "browser");
 const activeListeners = computed(() => state.value?.activeListeners ?? 1);
 const members = computed(() => state.value?.members ?? []);
@@ -100,6 +102,24 @@ function toggleAutoDj() {
   jukeboxClient.send({ type: "toggleAutoDj", enabled: !autoDjEnabled.value, token: token.value });
 }
 
+function toggleKaraoke() {
+  jukeboxClient.send({
+    type: "setKaraokeMode",
+    enabled: !karaokeEnabled.value,
+    level: karaokeLevel.value,
+    token: token.value,
+  });
+}
+
+function setKaraokeLevel(level: number) {
+  jukeboxClient.send({
+    type: "setKaraokeMode",
+    enabled: karaokeEnabled.value,
+    level,
+    token: token.value,
+  });
+}
+
 function setOutputMode(mode: "browser" | "native") {
   jukeboxClient.send({ type: "setOutputMode", mode, token: token.value });
 }
@@ -138,12 +158,14 @@ function formatDuration(sec: number): string {
 
 <template>
   <div class="host-page">
-    <!-- Invisible Audio Engine -->
+    <!-- Invisible Audio Engine with DSP Karaoke Processor -->
     <AudioEngine
       v-if="outputMode === 'browser'"
       :track="nowPlaying"
       :isPlaying="isPlaying"
       :volume="volume"
+      :karaokeEnabled="karaokeEnabled"
+      :karaokeLevel="karaokeLevel"
       @analyserReady="onAnalyserReady"
       @timeUpdate="onAudioTimeUpdate"
     />
@@ -200,6 +222,26 @@ function formatDuration(sec: number): string {
             </div>
           </div>
 
+          <!-- Real-Time Karaoke Quick-Access Banner -->
+          <transition name="karaoke-banner-pop">
+            <div v-if="karaokeEnabled && nowPlaying" class="karaoke-banner glass-panel">
+              <div class="karaoke-banner-left">
+                <span class="karaoke-pulse-icon">🎤</span>
+                <div class="karaoke-banner-info">
+                  <div class="karaoke-banner-title">
+                    <span class="banner-heading">Karaoke Mode Active</span>
+                    <span class="karaoke-cut-badge">Vocal Cut {{ karaokeLevel }}%</span>
+                  </div>
+                  <span class="karaoke-banner-desc">Real-time center cancellation with punchy bass preservation</span>
+                </div>
+              </div>
+              <button class="karaoke-sing-btn" @click="isLyricsOpen = true">
+                <span>Sing Along (Lyrics)</span>
+                <span class="arrow-up-right">↗</span>
+              </button>
+            </div>
+          </transition>
+
           <!-- Progress Bar / Seekbar -->
           <div class="progress-section">
             <SeekBar
@@ -230,6 +272,17 @@ function formatDuration(sec: number): string {
               🎤 Lyrics
             </button>
 
+            <button
+              class="btn-secondary karaoke-btn"
+              :class="{ active: karaokeEnabled }"
+              title="Toggle Real-Time Karaoke Mode (No Voice / Just Music)"
+              @click="toggleKaraoke"
+            >
+              <span class="karaoke-btn-mic">🎤</span>
+              <span>Karaoke</span>
+              <span v-if="karaokeEnabled" class="karaoke-pill-tag">{{ karaokeLevel }}%</span>
+            </button>
+
             <div class="volume-slider-group">
               <span class="vol-icon">🔊</span>
               <input
@@ -255,6 +308,30 @@ function formatDuration(sec: number): string {
             <button class="toggle-btn" :class="{ active: autoDjEnabled }" @click="toggleAutoDj">
               {{ autoDjEnabled ? "ON" : "OFF" }}
             </button>
+          </div>
+
+          <div class="setting-row karaoke-setting-row">
+            <div class="setting-info">
+              <h4>🎤 Karaoke Mode (Vocal Reducer)</h4>
+              <p>Real-time center vocal phase cancellation with low-frequency crossover</p>
+            </div>
+            <div class="karaoke-controls-wrap">
+              <div v-if="karaokeEnabled" class="karaoke-slider-box">
+                <span class="karaoke-slider-label">Vocal Cut: <strong>{{ karaokeLevel }}%</strong></span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  :value="karaokeLevel"
+                  class="karaoke-range-slider"
+                  @input="(e) => setKaraokeLevel(Number((e.target as HTMLInputElement).value))"
+                />
+              </div>
+              <button class="toggle-btn" :class="{ active: karaokeEnabled }" @click="toggleKaraoke">
+                {{ karaokeEnabled ? "ON" : "OFF" }}
+              </button>
+            </div>
           </div>
 
           <div class="setting-row">
@@ -814,5 +891,201 @@ function formatDuration(sec: number): string {
   font-size: 0.68rem;
   padding: 0.15rem 0.45rem;
   color: var(--text-muted);
+}
+
+/* ========================================================
+   🎤 Emil Kowalski-grade Real-Time Karaoke UI
+======================================================== */
+
+.karaoke-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all var(--transition-smooth);
+}
+
+.karaoke-btn.active {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(139, 92, 246, 0.28) 100%);
+  border: 1px solid rgba(236, 72, 153, 0.5);
+  color: #fff;
+  box-shadow: 0 0 20px -3px rgba(236, 72, 153, 0.35);
+}
+
+.karaoke-btn.active:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 0 24px -2px rgba(236, 72, 153, 0.5);
+}
+
+.karaoke-pill-tag {
+  background: rgba(236, 72, 153, 0.3);
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fbcfe8;
+}
+
+/* Quick-Access Karaoke Sing Banner */
+.karaoke-banner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.15rem;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(99, 102, 241, 0.15) 100%);
+  border: 1px solid rgba(236, 72, 153, 0.25);
+  box-shadow: 0 8px 30px -8px rgba(236, 72, 153, 0.2);
+  backdrop-filter: blur(16px);
+  margin-top: 0.25rem;
+}
+
+.karaoke-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.karaoke-pulse-icon {
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: micPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes micPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 4px rgba(236, 72, 153, 0.4));
+  }
+  50% {
+    transform: scale(1.14);
+    filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.8));
+  }
+}
+
+.karaoke-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.karaoke-banner-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.banner-heading {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.karaoke-cut-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(236, 72, 153, 0.25);
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  color: #f472b6;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-full);
+}
+
+.karaoke-banner-desc {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.karaoke-sing-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.95rem;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.35);
+  cursor: pointer;
+  transition: all var(--transition-bounce);
+  white-space: nowrap;
+}
+
+.karaoke-sing-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+}
+
+.karaoke-sing-btn:active {
+  transform: scale(0.96);
+}
+
+.arrow-up-right {
+  font-size: 0.9rem;
+  transition: transform var(--transition-fast);
+}
+
+.karaoke-sing-btn:hover .arrow-up-right {
+  transform: translate(2px, -2px);
+}
+
+/* Banner Spring Pop Transition */
+.karaoke-banner-pop-enter-active,
+.karaoke-banner-pop-leave-active {
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.karaoke-banner-pop-enter-from,
+.karaoke-banner-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.96);
+}
+
+/* Host Settings Karaoke Row */
+.karaoke-setting-row {
+  align-items: center;
+}
+
+.karaoke-controls-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.karaoke-slider-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+}
+
+.karaoke-slider-label {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.karaoke-slider-label strong {
+  color: #f472b6;
+}
+
+.karaoke-range-slider {
+  width: 90px;
+  accent-color: #ec4899;
+  cursor: pointer;
 }
 </style>

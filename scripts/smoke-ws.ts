@@ -249,11 +249,29 @@ async function runTests() {
   await seekPromise;
   console.log("[smoke] ✓ Seek broadcast and synchronization verified!");
 
+  // Test 12: DJ sending setKaraokeMode and verifying stateSync broadcast
+  console.log("[smoke] Test 12: Testing setKaraokeMode command and state synchronization...");
+  const karaokePromise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "stateSync" && msg.state.karaokeEnabled === true && msg.state.karaokeLevel === 85) {
+        adminWs.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    adminWs.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("karaoke stateSync timeout")), 5000);
+  });
+
+  ws.send(JSON.stringify({ type: "setKaraokeMode", enabled: true, level: 85 }));
+  await karaokePromise;
+  console.log("[smoke] ✓ Karaoke mode enable & intensity level broadcast verified!");
+
   ws.close();
   adminWs.close();
   serverProc.kill();
   console.log("\n=======================================================");
-  console.log(" 🎉 ALL 11 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
+  console.log(" 🎉 ALL 12 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
   console.log("=======================================================\n");
   process.exit(0);
 }

@@ -21,6 +21,8 @@ const nowPlaying = computed(() => state.value?.nowPlaying ?? null);
 const isPlaying = computed(() => state.value?.isPlaying ?? false);
 const queue = computed(() => state.value?.queue ?? []);
 const activeListeners = computed(() => state.value?.activeListeners ?? 1);
+const karaokeEnabled = computed(() => state.value?.karaokeEnabled ?? false);
+const karaokeLevel = computed(() => state.value?.karaokeLevel ?? 90);
 const status = computed(() => jukeboxClient.status.value);
 const currentClientId = computed(() => jukeboxClient.clientId.value);
 const myRole = computed(() => jukeboxClient.myRole.value);
@@ -82,6 +84,22 @@ function togglePlay() {
 
 function skip() {
   jukeboxClient.send({ type: "skip" });
+}
+
+function toggleKaraoke() {
+  jukeboxClient.send({
+    type: "setKaraokeMode",
+    enabled: !karaokeEnabled.value,
+    level: karaokeLevel.value,
+  });
+}
+
+function setKaraokeLevel(level: number) {
+  jukeboxClient.send({
+    type: "setKaraokeMode",
+    enabled: karaokeEnabled.value,
+    level,
+  });
 }
 
 function onSeek(time: number) {
@@ -175,9 +193,14 @@ function formatDuration(sec: number): string {
               <span v-if="nowPlaying?.requestedBy" class="dj-pill glass-pill">
                 Requested by {{ nowPlaying.requestedBy }}
               </span>
+              <span v-if="karaokeEnabled" class="karaoke-client-pill">
+                <span class="karaoke-pulse-dot"></span>
+                <span>🎤 Karaoke ({{ karaokeLevel }}%)</span>
+              </span>
               <button
                 v-if="nowPlaying"
                 class="lyrics-icon-btn glass-pill"
+                :class="{ 'lyrics-highlight': karaokeEnabled }"
                 title="View Synced Lyrics"
                 @click="isLyricsOpen = true"
               >
@@ -187,6 +210,20 @@ function formatDuration(sec: number): string {
 
             <h2 class="hero-title">{{ nowPlaying?.title || "No track playing" }}</h2>
             <p class="hero-artist">{{ nowPlaying?.artist || "Office speakers are waiting for your tune!" }}</p>
+
+            <!-- Mobile Karaoke Quick Sing Banner -->
+            <transition name="karaoke-banner-pop">
+              <div v-if="karaokeEnabled && nowPlaying" class="mobile-karaoke-banner" @click="isLyricsOpen = true">
+                <div class="mk-left">
+                  <span class="mk-icon">🎤</span>
+                  <div class="mk-text">
+                    <strong>Karaoke Mode Active</strong>
+                    <span>Tap to sing along with synced lyrics!</span>
+                  </div>
+                </div>
+                <button class="mk-sing-btn">Sing ↗</button>
+              </div>
+            </transition>
 
             <!-- Progress Bar / Seekbar -->
             <div v-if="nowPlaying" class="progress-wrap">
@@ -227,6 +264,15 @@ function formatDuration(sec: number): string {
               🎤 Lyrics
             </button>
 
+            <button
+              class="btn-secondary dj-karaoke-btn"
+              :class="{ active: karaokeEnabled }"
+              title="Toggle Karaoke Mode"
+              @click="toggleKaraoke"
+            >
+              🎤 Karaoke
+            </button>
+
             <div class="dj-vol-group">
               <span class="vol-icon">🔊</span>
               <input
@@ -239,6 +285,20 @@ function formatDuration(sec: number): string {
               />
               <span class="dj-vol-num">{{ volume }}%</span>
             </div>
+          </div>
+
+          <!-- DJ Vocal Cut Slider -->
+          <div v-if="karaokeEnabled" class="dj-karaoke-slider-bar">
+            <span class="dj-k-label">Vocal Cut: <strong>{{ karaokeLevel }}%</strong></span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              :value="karaokeLevel"
+              class="dj-k-slider"
+              @input="(e) => setKaraokeLevel(Number((e.target as HTMLInputElement).value))"
+            />
           </div>
         </div>
       </section>
@@ -708,5 +768,144 @@ function formatDuration(sec: number): string {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   min-width: 30px;
+}
+
+/* ========================================================
+   🎤 Mobile & Client Karaoke Mode Styling
+======================================================== */
+
+.karaoke-client-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(139, 92, 246, 0.28) 100%);
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  color: #fbcfe8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+}
+
+.karaoke-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ec4899;
+  box-shadow: 0 0 8px #ec4899;
+  animation: pulseDot 1.5s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.6;
+  }
+}
+
+.lyrics-highlight {
+  border-color: rgba(236, 72, 153, 0.5) !important;
+  color: #f472b6 !important;
+  background: rgba(236, 72, 153, 0.15) !important;
+  box-shadow: 0 0 12px rgba(236, 72, 153, 0.3);
+}
+
+.mobile-karaoke-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.16) 0%, rgba(99, 102, 241, 0.18) 100%);
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  border-radius: var(--radius-md);
+  margin-top: 0.5rem;
+  cursor: pointer;
+  transition: all var(--transition-smooth);
+}
+
+.mobile-karaoke-banner:active {
+  transform: scale(0.97);
+}
+
+.mk-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.mk-icon {
+  font-size: 1.25rem;
+}
+
+.mk-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mk-text strong {
+  font-size: 0.78rem;
+  color: #fff;
+}
+
+.mk-text span {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.mk-sing-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(236, 72, 153, 0.35);
+  white-space: nowrap;
+}
+
+.dj-karaoke-btn {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  border-radius: var(--radius-full);
+  transition: all var(--transition-smooth);
+}
+
+.dj-karaoke-btn.active {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25) 0%, rgba(139, 92, 246, 0.3) 100%);
+  border: 1px solid rgba(236, 72, 153, 0.5);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(236, 72, 153, 0.35);
+}
+
+.dj-karaoke-slider-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dj-k-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.dj-k-label strong {
+  color: #f472b6;
+}
+
+.dj-k-slider {
+  width: 90px;
+  accent-color: #ec4899;
+  cursor: pointer;
 }
 </style>
