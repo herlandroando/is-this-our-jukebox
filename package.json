@@ -1,0 +1,24 @@
+{
+  "name": "is-this-our-jukebox-v2",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "cd ./frontend && bun run build && cd .. && bun ./scripts/build-manifest.ts && concurrently -k -n backend,frontend -c blue,magenta \"bun --filter @jukebox/backend dev\" \"bun --filter @jukebox/frontend dev\"",
+    "manifest": "bun scripts/build-manifest.ts",
+    "build:frontend": "bun --filter @jukebox/frontend build",
+    "build": "bun run build:frontend && bun manifest && bun --filter @jukebox/backend compile:embed",
+    "package": "bun run build:frontend && bun manifest && bun --filter @jukebox/backend compile:package",
+    "clean": "bun --filter @jukebox/backend clean && bun --filter @jukebox/frontend clean",
+    "typecheck": "bun --filter @jukebox/backend typecheck && bun --filter @jukebox/frontend typecheck",
+    "smoke:ws": "bun scripts/smoke-ws.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

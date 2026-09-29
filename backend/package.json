@@ -1,0 +1,23 @@
+{
+  "name": "@jukebox/backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch ./src/server.ts",
+    "compile:embed": "bun build --target=bun --outdir=./dist ./src/server.ts",
+    "compile:package": "bun build --compile --minify --outfile=../jukebox-office.exe ./src/server.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "hono": "^4.7.1",
+    "open": "^10.1.0",
+    "soundcloud.ts": "^0.7.4",
+    "ytmusic-api": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4",
+    "typescript": "^5.7.3"
+  }
+}

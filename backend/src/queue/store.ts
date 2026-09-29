@@ -1,0 +1,463 @@
+import { randomUUID } from "node:crypto";
+import type {
+  MemberInfo,
+  MemberRole,
+  QueueTrack,
+  SearchResult,
+  ServerState,
+  TrackVoter,
+} from "../types.ts";
+import { preResolveTrack } from "../stream/resolver.ts";
+import { searchFallback } from "../search/index.ts";
+import { autoDj } from "../stream/autoDj.ts";
+
+export type StateListener = (state: ServerState) => void;
+export type ToastListener = (message: string, type: "info" | "success" | "warning" | "error") => void;
+
+const MAX_PENDING_PER_CLIENT = 5;
+
+export function getRoleVoteWeight(role: MemberRole): number {
+  switch (role) {
+    case "host":
+      return 5;
+    case "dj":
+      return 3;
+    case "vip":
+      return 2;
+    case "member":
+      return 1;
+    case "listener":
+      return 0;
+    default:
+      return 1;
+  }
+}
+
+export class QueueStore {
+  private queue: QueueTrack[] = [];
+  private history: QueueTrack[] = [];
+  private nowPlaying: QueueTrack | null = null;
+  private isPlaying = false;
+  private currentTime = 0;
+  private duration = 0;
+  private volume = 80;
+  private outputMode: "browser" | "native" = "browser";
+  private autoDjEnabled = true;
+  private karaokeEnabled = false;
+  private karaokeLevel = 90;
+  private activeListeners = 0;
+  private members: Map<string, MemberInfo> = new Map();
+  private djPasscode = "office-dj";
+
+  private stateListeners: Set<StateListener> = new Set();
+  private toastListeners: Set<ToastListener> = new Set();
+
+  constructor() {
+    // Check queue periodically or trigger autoDJ if needed
+  }
+
+  public subscribe(listener: StateListener): () => void {
+    this.stateListeners.add(listener);
+    return () => this.stateListeners.delete(listener);
+  }
+
+  public onToast(listener: ToastListener): () => void {
+    this.toastListeners.add(listener);
+    return () => this.toastListeners.delete(listener);
+  }
+
+  private notify() {
+    const s = this.getState();
+    for (const listener of this.stateListeners) {
+      listener(s);
+    }
+  }
+
+  public toast(message: string, type: "info" | "success" | "warning" | "error" = "info") {
+    for (const listener of this.toastListeners) {
+      listener(message, type);
+    }
+  }
+
+  public getState(): ServerState {
+    return {
+      nowPlaying: this.nowPlaying,
+      isPlaying: this.isPlaying,
+      currentTime: this.currentTime,
+      duration: this.duration,
+      volume: this.volume,
+      outputMode: this.outputMode,
+      autoDjEnabled: this.autoDjEnabled,
+      karaokeEnabled: this.karaokeEnabled,
+      karaokeLevel: this.karaokeLevel,
+      queue: [...this.queue],
+      history: [...this.history],
+      activeListeners: this.activeListeners,
+      members: Array.from(this.members.values()),
+      djPasscodeEnabled: !!this.djPasscode,
+    };
+  }
+
+  public setActiveListeners(count: number) {
+    this.activeListeners = count;
+    this.notify();
+  }
+
+  public setMember(info: MemberInfo) {
+    this.members.set(info.clientId, info);
+    this.notify();
+  }
+
+  public removeMember(clientId: string) {
+    this.members.delete(clientId);
+    this.notify();
+  }
+
+  public getMember(clientId: string): MemberInfo | undefined {
+    return this.members.get(clientId);
+  }
+
+  public updateMemberRole(clientId: string, role: MemberRole): boolean {
+    const member = this.members.get(clientId);
+    if (!member) return false;
+    member.role = role;
+    this.notify();
+    return true;
+  }
+
+  public updateMemberNickname(clientId: string, nickname: string): boolean {
+    const member = this.members.get(clientId);
+    if (!member) return false;
+    member.nickname = nickname;
+    this.notify();
+    return true;
+  }
+
+  public verifyDjPasscode(candidate: string): boolean {
+    if (!this.djPasscode) return false;
+    return candidate.trim().toLowerCase() === this.djPasscode.trim().toLowerCase();
+  }
+
+  public setDjPasscode(passcode: string) {
+    this.djPasscode = passcode.trim();
+    this.toast("DJ Passcode updated by Host", "info");
+    this.notify();
+  }
+
+  private sortQueue() {
+    this.queue.sort((a, b) => {
+      if (b.votes !== a.votes) {
+        return b.votes - a.votes;
+      }
+      return a.requestedAt - b.requestedAt;
+    });
+  }
+
+  /**
+   * Coworker requests a new track.
+   */
+  public async addTrack(
+    track: SearchResult,
+    clientId: string,
+    nickname?: string,
+    role: MemberRole = "member"
+  ): Promise<{ success: boolean; message?: string }> {
+    // Check pending count for client
+    const pendingCount = this.queue.filter((t) => t.votedIps.includes(clientId)).length;
+    if (pendingCount >= MAX_PENDING_PER_CLIENT && role !== "host" && role !== "dj") {
+      return {
+        success: false,
+        message: `You already have ${MAX_PENDING_PER_CLIENT} tracks in the queue. Let coworkers pick some too!`,
+      };
+    }
+
+    const displayName = nickname?.trim() || "Anonymous Coworker";
+    const weight = getRoleVoteWeight(role);
+    const queueItem: QueueTrack = {
+      ...track,
+      queueId: randomUUID(),
+      requestedBy: displayName,
+      requestedAt: Date.now(),
+      votes: weight,
+      voters: [
+        {
+          clientId,
+          nickname: displayName,
+          role,
+          weight,
+        },
+      ],
+      votedIps: [clientId],
+      status: "resolving",
+    };
+
+    this.queue.push(queueItem);
+    this.sortQueue();
+
+    this.toast(`"${track.title}" requested by ${displayName}`, "info");
+
+    // If nothing is playing, advance to start playback immediately
+    if (!this.nowPlaying) {
+      await this.nextTrack();
+    } else {
+      this.notify();
+    }
+
+    // Pre-resolve stream in the background for zero-stutter playback
+    void (async () => {
+      const res = await preResolveTrack(track, (q) => searchFallback(q, track.provider));
+      const target = this.queue.find((t) => t.queueId === queueItem.queueId);
+      if (target) {
+        if (res.fallbackTrack) {
+          // Swap to pre-resolved fallback
+          Object.assign(target, res.fallbackTrack);
+          target.status = "ready";
+          target.fallbackCount = (target.fallbackCount || 0) + 1;
+          this.toast(`Replaced "${track.title}" with playable match "${res.fallbackTrack.title}"`, "info");
+        } else {
+          target.status = res.success ? "ready" : "failed";
+        }
+        this.notify();
+      }
+    })();
+
+    return { success: true };
+  }
+
+  /**
+   * Democratic weighted upvoting
+   */
+  public upvote(
+    queueId: string,
+    clientId: string,
+    nickname?: string,
+    role: MemberRole = "member"
+  ): { success: boolean; weight: number } {
+    const item = this.queue.find((t) => t.queueId === queueId);
+    if (!item) return { success: false, weight: 0 };
+
+    if (role === "listener") {
+      this.toast("Listener role is view-only and cannot upvote", "warning");
+      return { success: false, weight: 0 };
+    }
+
+    if (item.votedIps.includes(clientId) || item.voters?.some((v) => v.clientId === clientId)) {
+      return { success: false, weight: 0 }; // already voted
+    }
+
+    const weight = getRoleVoteWeight(role);
+    const voterName = nickname?.trim() || "Coworker";
+
+    if (!item.voters) item.voters = [];
+    item.voters.push({
+      clientId,
+      nickname: voterName,
+      role,
+      weight,
+    });
+    item.votedIps.push(clientId);
+    item.votes = item.voters.reduce((sum, v) => sum + v.weight, 0);
+
+    this.sortQueue();
+
+    const roleBadge = role === "host" ? "👑" : role === "dj" ? "🎧" : role === "vip" ? "⭐" : "";
+    const weightText = weight > 1 ? ` (+${weight} votes!)` : "";
+    this.toast(`${voterName} ${roleBadge} voted for "${item.title}"${weightText}`, "info");
+
+    this.notify();
+    return { success: true, weight };
+  }
+
+  public removeVote(queueId: string, clientId: string): boolean {
+    const item = this.queue.find((t) => t.queueId === queueId);
+    if (!item) return false;
+
+    const voterIdx = item.voters ? item.voters.findIndex((v) => v.clientId === clientId) : -1;
+    if (voterIdx !== -1) {
+      item.voters.splice(voterIdx, 1);
+    }
+
+    const ipIdx = item.votedIps.indexOf(clientId);
+    if (ipIdx !== -1) {
+      item.votedIps.splice(ipIdx, 1);
+    }
+
+    item.votes = (item.voters || []).reduce((sum, v) => sum + v.weight, 0);
+    this.sortQueue();
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Advance to the next track.
+   */
+  public async nextTrack(): Promise<void> {
+    if (this.nowPlaying) {
+      this.nowPlaying.status = "played";
+      this.history.unshift(this.nowPlaying);
+      autoDj.markPlayed(this.nowPlaying.id);
+      if (this.history.length > 20) {
+        this.history = this.history.slice(0, 20);
+      }
+    }
+
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next.status = "playing";
+      this.nowPlaying = next;
+      this.isPlaying = true;
+      this.currentTime = 0;
+      this.duration = next.duration;
+      this.notify();
+      return;
+    }
+
+    // Queue is empty: check Auto-DJ
+    if (this.autoDjEnabled) {
+      this.nowPlaying = null;
+      this.isPlaying = false;
+      this.notify();
+
+      console.log("[queue] Queue empty, requesting Auto-DJ track...");
+      const rec = await autoDj.getNextRecommendation(this.history);
+      if (rec) {
+        const autoTrack: QueueTrack = {
+          ...rec,
+          queueId: randomUUID(),
+          requestedBy: "Auto-DJ 🎧",
+          requestedAt: Date.now(),
+          votes: 1,
+          voters: [
+            {
+              clientId: "auto-dj",
+              nickname: "Auto-DJ 🎧",
+              role: "host",
+              weight: 1,
+            },
+          ],
+          votedIps: ["auto-dj"],
+          status: "playing",
+        };
+        this.nowPlaying = autoTrack;
+        this.isPlaying = true;
+        this.currentTime = 0;
+        this.duration = autoTrack.duration;
+        this.toast(`Auto-DJ selected "${rec.title}" by ${rec.artist}`, "info");
+        this.notify();
+        return;
+      }
+    }
+
+    // Nothing to play
+    this.nowPlaying = null;
+    this.isPlaying = false;
+    this.currentTime = 0;
+    this.duration = 0;
+    this.notify();
+  }
+
+  /**
+   * Handle unplayable track error seamlessly without skip loops.
+   */
+  public async handleTrackError(errorMessage: string) {
+    if (!this.nowPlaying) return;
+
+    const failed = this.nowPlaying;
+    console.warn(`[queue] Playback error for "${failed.title}": ${errorMessage}`);
+
+    // If it hasn't had a fallback yet, try a fallback search
+    if (!failed.fallbackCount) {
+      this.toast(`Stream error on "${failed.title}". Searching alternative...`, "warning");
+      const alt = await searchFallback(`${failed.title} ${failed.artist}`, failed.provider);
+      if (alt && alt.id !== failed.id) {
+        console.log(`[queue] Swapping to fallback: ${alt.title} (${alt.provider})`);
+        this.nowPlaying = {
+          ...alt,
+          queueId: failed.queueId,
+          requestedBy: failed.requestedBy,
+          requestedAt: failed.requestedAt,
+          votes: failed.votes,
+          voters: failed.voters || [],
+          votedIps: failed.votedIps,
+          status: "playing",
+          fallbackCount: 1,
+        };
+        this.currentTime = 0;
+        this.isPlaying = true;
+        this.toast(`Playing fallback: "${alt.title}"`, "info");
+        this.notify();
+        return;
+      }
+    }
+
+    // Otherwise, cleanly advance to next song
+    this.toast(`Could not stream "${failed.title}". Moving to next song.`, "warning");
+    await this.nextTrack();
+  }
+
+  // Transport controls
+  public play() {
+    this.isPlaying = true;
+    this.notify();
+  }
+
+  public pause() {
+    this.isPlaying = false;
+    this.notify();
+  }
+
+  public setVolume(v: number) {
+    this.volume = Math.max(0, Math.min(100, v));
+    this.notify();
+  }
+
+  public setTime(current: number, dur: number) {
+    this.currentTime = current;
+    if (dur > 0) this.duration = dur;
+    // Don't flood listeners with every 200ms tick, but keep state updated
+  }
+
+  public seek(time: number) {
+    this.currentTime = Math.max(0, time);
+    this.notify();
+  }
+
+  public removeTrack(queueId: string): boolean {
+    const idx = this.queue.findIndex((t) => t.queueId === queueId);
+    if (idx !== -1) {
+      const removed = this.queue.splice(idx, 1)[0];
+      this.toast(`Removed "${removed.title}" from queue`, "info");
+      this.notify();
+      return true;
+    }
+    return false;
+  }
+
+  public toggleAutoDj(enabled: boolean) {
+    this.autoDjEnabled = enabled;
+    this.toast(`Auto-DJ ${enabled ? "enabled" : "disabled"}`, "info");
+    this.notify();
+  }
+
+  public setOutputMode(mode: "browser" | "native") {
+    this.outputMode = mode;
+    this.toast(`Output mode set to ${mode}`, "info");
+    this.notify();
+  }
+
+  public setKaraokeMode(enabled: boolean, level?: number) {
+    this.karaokeEnabled = enabled;
+    if (typeof level === "number" && !isNaN(level)) {
+      this.karaokeLevel = Math.max(0, Math.min(100, Math.round(level)));
+    }
+    this.toast(
+      enabled
+        ? `🎤 Karaoke Mode ON (Vocal Cut: ${this.karaokeLevel}%)`
+        : "Karaoke Mode OFF",
+      enabled ? "success" : "info"
+    );
+    this.notify();
+  }
+}
+
+export const queueStore = new QueueStore();
