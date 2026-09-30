@@ -10,6 +10,7 @@ import type {
 import { preResolveTrack } from "../stream/resolver.ts";
 import { searchFallback } from "../search/index.ts";
 import { autoDj } from "../stream/autoDj.ts";
+import { jukeboxDb } from "../db.ts";
 
 export type StateListener = (state: ServerState) => void;
 export type ToastListener = (message: string, type: "info" | "success" | "warning" | "error") => void;
@@ -53,7 +54,35 @@ export class QueueStore {
   private toastListeners: Set<ToastListener> = new Set();
 
   constructor() {
-    // Check queue periodically or trigger autoDJ if needed
+    // Restore persistent queue and playback state from SQLite
+    try {
+      const restoredQueue = jukeboxDb.loadQueue();
+      if (restoredQueue.length > 0) {
+        this.queue = restoredQueue;
+        this.sortQueue();
+        console.log(`[queue] Restored ${restoredQueue.length} tracks from persistent storage.`);
+      }
+
+      const restoredNowPlaying = jukeboxDb.loadNowPlaying();
+      if (restoredNowPlaying && restoredNowPlaying.track) {
+        this.nowPlaying = restoredNowPlaying.track;
+        this.currentTime = restoredNowPlaying.currentTime || 0;
+        this.duration = restoredNowPlaying.duration || restoredNowPlaying.track.duration || 0;
+        this.isPlaying = false; // Restored in paused state as requested
+        console.log(`[queue] Restored now-playing track: "${this.nowPlaying.title}" (paused).`);
+      }
+
+      const savedAutoDj = jukeboxDb.getMeta("auto_dj_enabled");
+      if (savedAutoDj !== null) this.autoDjEnabled = savedAutoDj === "true";
+
+      const savedDjPasscode = jukeboxDb.getMeta("dj_passcode");
+      if (savedDjPasscode !== null) this.djPasscode = savedDjPasscode;
+
+      const savedVolume = jukeboxDb.getMeta("volume");
+      if (savedVolume !== null) this.volume = Number(savedVolume);
+    } catch (err) {
+      console.warn("[queue] Error restoring state from db:", err);
+    }
   }
 
   public subscribe(listener: StateListener): () => void {
@@ -103,13 +132,19 @@ export class QueueStore {
     this.notify();
   }
 
-  public setMember(info: MemberInfo) {
+  public setMember(info: MemberInfo, activeListeners?: number) {
     this.members.set(info.clientId, info);
+    if (activeListeners !== undefined) {
+      this.activeListeners = activeListeners;
+    }
     this.notify();
   }
 
-  public removeMember(clientId: string) {
+  public removeMember(clientId: string, activeListeners?: number) {
     this.members.delete(clientId);
+    if (activeListeners !== undefined) {
+      this.activeListeners = activeListeners;
+    }
     this.notify();
   }
 
@@ -140,8 +175,25 @@ export class QueueStore {
 
   public setDjPasscode(passcode: string) {
     this.djPasscode = passcode.trim();
+    jukeboxDb.saveMeta("dj_passcode", this.djPasscode);
     this.toast("DJ Passcode updated by Host", "info");
     this.notify();
+  }
+
+  private persistQueue() {
+    try {
+      jukeboxDb.saveQueue(this.queue);
+    } catch (err) {
+      console.error("[queue] Failed to persist queue:", err);
+    }
+  }
+
+  private persistNowPlaying() {
+    try {
+      jukeboxDb.saveNowPlaying(this.nowPlaying, this.currentTime, this.duration);
+    } catch (err) {
+      console.error("[queue] Failed to persist now-playing:", err);
+    }
   }
 
   private sortQueue() {
@@ -151,6 +203,7 @@ export class QueueStore {
       }
       return a.requestedAt - b.requestedAt;
     });
+    this.persistQueue();
   }
 
   /**
@@ -193,6 +246,7 @@ export class QueueStore {
 
     this.queue.push(queueItem);
     this.sortQueue();
+    autoDj.resetPool();
 
     this.toast(`"${track.title}" requested by ${displayName}`, "info");
 
@@ -213,9 +267,11 @@ export class QueueStore {
           Object.assign(target, res.fallbackTrack);
           target.status = "ready";
           target.fallbackCount = (target.fallbackCount || 0) + 1;
+          this.persistQueue();
           this.toast(`Replaced "${track.title}" with playable match "${res.fallbackTrack.title}"`, "info");
         } else {
           target.status = res.success ? "ready" : "failed";
+          this.persistQueue();
         }
         this.notify();
       }
@@ -296,6 +352,7 @@ export class QueueStore {
       this.nowPlaying.status = "played";
       this.history.unshift(this.nowPlaying);
       autoDj.markPlayed(this.nowPlaying.id);
+      jukeboxDb.recordTrackPlayed(this.nowPlaying);
       if (this.history.length > 20) {
         this.history = this.history.slice(0, 20);
       }
@@ -308,18 +365,17 @@ export class QueueStore {
       this.isPlaying = true;
       this.currentTime = 0;
       this.duration = next.duration;
+      this.persistQueue();
+      this.persistNowPlaying();
       this.notify();
       return;
     }
 
     // Queue is empty: check Auto-DJ
     if (this.autoDjEnabled) {
-      this.nowPlaying = null;
-      this.isPlaying = false;
-      this.notify();
-
       console.log("[queue] Queue empty, requesting Auto-DJ track...");
-      const rec = await autoDj.getNextRecommendation(this.history);
+      const currentQueueIds = this.queue.map((t) => t.id);
+      const rec = await autoDj.getNextRecommendation(this.history, currentQueueIds);
       if (rec) {
         const autoTrack: QueueTrack = {
           ...rec,
@@ -342,6 +398,7 @@ export class QueueStore {
         this.isPlaying = true;
         this.currentTime = 0;
         this.duration = autoTrack.duration;
+        this.persistNowPlaying();
         this.toast(`Auto-DJ selected "${rec.title}" by ${rec.artist}`, "info");
         this.notify();
         return;
@@ -353,6 +410,7 @@ export class QueueStore {
     this.isPlaying = false;
     this.currentTime = 0;
     this.duration = 0;
+    this.persistNowPlaying();
     this.notify();
   }
 
@@ -384,6 +442,7 @@ export class QueueStore {
         };
         this.currentTime = 0;
         this.isPlaying = true;
+        this.persistNowPlaying();
         this.toast(`Playing fallback: "${alt.title}"`, "info");
         this.notify();
         return;
@@ -403,11 +462,13 @@ export class QueueStore {
 
   public pause() {
     this.isPlaying = false;
+    this.persistNowPlaying();
     this.notify();
   }
 
   public setVolume(v: number) {
     this.volume = Math.max(0, Math.min(100, v));
+    jukeboxDb.saveMeta("volume", String(this.volume));
     this.notify();
   }
 
@@ -419,6 +480,7 @@ export class QueueStore {
 
   public seek(time: number) {
     this.currentTime = Math.max(0, time);
+    this.persistNowPlaying();
     this.notify();
   }
 
@@ -426,6 +488,7 @@ export class QueueStore {
     const idx = this.queue.findIndex((t) => t.queueId === queueId);
     if (idx !== -1) {
       const removed = this.queue.splice(idx, 1)[0];
+      this.persistQueue();
       this.toast(`Removed "${removed.title}" from queue`, "info");
       this.notify();
       return true;
@@ -433,10 +496,14 @@ export class QueueStore {
     return false;
   }
 
-  public toggleAutoDj(enabled: boolean) {
+  public async toggleAutoDj(enabled: boolean) {
     this.autoDjEnabled = enabled;
+    jukeboxDb.saveMeta("auto_dj_enabled", String(enabled));
     this.toast(`Auto-DJ ${enabled ? "enabled" : "disabled"}`, "info");
     this.notify();
+    if (enabled && !this.nowPlaying && this.queue.length === 0) {
+      await this.nextTrack();
+    }
   }
 
   public setOutputMode(mode: "browser" | "native") {

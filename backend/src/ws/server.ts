@@ -42,20 +42,7 @@ export class JukeboxWsHub {
   }
 
   public handleOpen(ws: ServerWebSocket<WsUserData>) {
-    this.sockets.add(ws);
-    queueStore.setActiveListeners(this.sockets.size);
-
-    queueStore.setMember({
-      clientId: ws.data.id,
-      ip: ws.data.ip,
-      nickname: ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "Anonymous"),
-      role: ws.data.role,
-      connectedAt: ws.data.connectedAt || Date.now(),
-      isHost: ws.data.isAdmin,
-    });
-
-    // Send initial state immediately
-    const state = queueStore.getState();
+    // 1. Send welcome message to newly connected client first
     const welcome: ServerMessage = {
       type: "welcome",
       isAdmin: ws.data.isAdmin,
@@ -64,17 +51,27 @@ export class JukeboxWsHub {
     };
     ws.send(JSON.stringify(welcome));
 
-    const sync: ServerMessage = {
-      type: "stateSync",
-      state,
-    };
-    ws.send(JSON.stringify(sync));
+    // 2. Add socket to active hub
+    this.sockets.add(ws);
+
+    // 3. Batch member addition & active listener count into store,
+    // which triggers exactly one stateSync broadcast to all connected clients (including this one)
+    queueStore.setMember(
+      {
+        clientId: ws.data.id,
+        ip: ws.data.ip,
+        nickname: ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "Anonymous"),
+        role: ws.data.role,
+        connectedAt: ws.data.connectedAt || Date.now(),
+        isHost: ws.data.isAdmin,
+      },
+      this.sockets.size
+    );
   }
 
   public handleClose(ws: ServerWebSocket<WsUserData>) {
     this.sockets.delete(ws);
-    queueStore.removeMember(ws.data.id);
-    queueStore.setActiveListeners(this.sockets.size);
+    queueStore.removeMember(ws.data.id, this.sockets.size);
   }
 
   public async handleMessage(ws: ServerWebSocket<WsUserData>, message: string | Buffer) {
@@ -273,7 +270,7 @@ export class JukeboxWsHub {
 
       case "toggleAutoDj": {
         if (ws.data.isAdmin || (msg.token && verifyAdminToken(msg.token))) {
-          queueStore.toggleAutoDj(msg.enabled);
+          void queueStore.toggleAutoDj(msg.enabled);
         }
         break;
       }
