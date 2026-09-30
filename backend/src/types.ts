@@ -45,6 +45,7 @@ export interface LyricLine {
   time: number; // in seconds
   text: string;
   translation?: string;
+  romaji?: string;
 }
 
 export interface LyricsData {

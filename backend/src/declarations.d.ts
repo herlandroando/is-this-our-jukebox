@@ -27,3 +27,6 @@ declare module "*.ico" {
   const content: string;
   export default content;
 }
+
+declare module "kuroshiro";
+declare module "kuroshiro-analyzer-kuromoji";

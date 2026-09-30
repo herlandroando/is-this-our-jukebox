@@ -8,3 +8,5 @@ bun.lockb
 dev.log
 .DS_Store
 Thumbs.db
+dict/
+backend/dict/

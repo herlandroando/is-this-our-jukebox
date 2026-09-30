@@ -7,7 +7,16 @@ import {
   parseRawLyrics,
   mergeConsecutiveBilingualLines,
   selectBestLrclibMatch,
+  calculateSimilarity,
+  normalizeText,
+  addRomajiToLyrics,
+  getLyrics,
+  lyricsCache,
+  MAX_LYRICS_CACHE_SIZE,
+  setCachedLyrics,
+  getCachedLyrics,
 } from "./index.ts";
+
 
 describe("cleanTitleAndArtist", () => {
   it("cleans YouTube noise, feat and Topic tags", () => {
@@ -130,4 +139,132 @@ describe("selectBestLrclibMatch", () => {
     expect(best.trackName).toBe("夜に駆ける");
     expect(best.syncedLyrics).toBeTruthy();
   });
+
+  it("rejects candidate when title does not match even if synced", () => {
+    const candidates = [
+      {
+        id: 1,
+        syncedLyrics: "[00:10.00]Rindu aku rindu kamu...",
+        plainLyrics: null,
+        trackName: "Rindu Aku Rindu Kamu",
+        artistName: "Doel Sumbang",
+        duration: 251.0,
+      },
+    ];
+
+    const best = selectBestLrclibMatch(candidates, "Kamu-Kamulah Surgaku", "T.R.I.A.D", 323);
+    expect(best).toBeNull();
+  });
 });
+
+describe("calculateSimilarity", () => {
+  it("returns 1 for exact match or punctuation differences", () => {
+    expect(calculateSimilarity("Kamu-Kamulah Surgaku", "Kamu-Kamulah Surgaku")).toBe(1);
+    expect(calculateSimilarity("Kamu-Kamulah Surgaku", "Kamu Kamulah Surgaku")).toBe(1);
+    expect(calculateSimilarity("T.R.I.A.D", "TRIAD")).toBe(1);
+  });
+
+  it("detects low similarity for completely different songs", () => {
+    const sim = calculateSimilarity("Kamu-Kamulah Surgaku", "Rindu Aku Rindu Kamu");
+    expect(sim).toBeLessThan(0.4);
+
+    const jungleVsInternet = calculateSimilarity("Welcome To The Jungle", "Welcome to The Internet");
+    expect(jungleVsInternet).toBeLessThan(0.7);
+
+    const gunsVsBo = calculateSimilarity("Guns N' Roses", "Bo Burnham");
+    expect(gunsVsBo).toBeLessThan(0.2);
+  });
+
+  it("handles live / remastered versions with high similarity", () => {
+    const sim = calculateSimilarity("Kamu-Kamulah Surgaku", "Kamu-Kamulah Surgaku (Live)");
+    expect(sim).toBeGreaterThanOrEqual(0.75);
+  });
+});
+
+describe("addRomajiToLyrics", () => {
+  it("generates spaced Hepburn romaji for Japanese lines and leaves non-Japanese intact", async () => {
+    const input = [
+      { time: 0, text: "夜に駆ける" },
+      { time: 5, text: "Hello World" },
+      { time: 10, text: "沈むように溶けてゆくように" },
+    ];
+
+    const result = await addRomajiToLyrics(input);
+    expect(result).toHaveLength(3);
+    expect(result[0].romaji).toBe("yoru ni kakeru");
+    expect(result[1].romaji).toBeUndefined();
+    expect(result[2].romaji).toBe("shizumu yō ni toke te yuku yō ni");
+  });
+});
+
+describe("getLyrics regression - Kamu-Kamulah Surgaku", () => {
+  it("fetches correct T.R.I.A.D lyrics from LRCLIB and avoids Unison false match", async () => {
+    const result = await getLyrics("Kamu-Kamulah Surgaku", "T.R.I.A.D", {
+      duration: 323,
+      videoId: "zNY5YmAXwec",
+    });
+
+    expect(result.source).toBe("LRCLIB");
+    expect(result.synced).toBe(true);
+    expect(result.lines.length).toBeGreaterThan(0);
+    // Verified line from Kamu-Kamulah Surgaku
+    const firstLine = result.lines[0];
+    expect(firstLine.text).toContain("Tahukah kamu");
+    // Ensure it NEVER contains lyrics from "Rindu Aku Rindu Kamu"
+    const hasWrongSong = result.lines.some((l) => l.text.includes("ombak di laut") || l.text.includes("pasang"));
+    expect(hasWrongSong).toBe(false);
+  }, 15000);
+
+  it("fetches correct Guns N' Roses lyrics for Welcome To The Jungle and avoids Bo Burnham false match", async () => {
+    const result = await getLyrics("Welcome To The Jungle", "Guns N' Roses", {
+      duration: 275,
+      videoId: "o1tj2zJ2Wvg",
+    });
+
+    expect(result.synced).toBe(true);
+    expect(result.lines.length).toBeGreaterThan(0);
+    // Verified authentic lyrics from Welcome To The Jungle
+    const hasJungleLine = result.lines.some((l) =>
+      l.text.toLowerCase().includes("welcome to the jungle") ||
+      l.text.toLowerCase().includes("fun and games") ||
+      l.text.toLowerCase().includes("watch you bleed")
+    );
+    expect(hasJungleLine).toBe(true);
+
+    // Ensure it NEVER contains Bo Burnham's "Welcome to the Internet" lyrics
+    const hasInternetLyrics = result.lines.some((l) =>
+      l.text.toLowerCase().includes("apathy's a tragedy") ||
+      l.text.toLowerCase().includes("boredom is a crime") ||
+      l.text.toLowerCase().includes("anything and everything, all of the time")
+    );
+    expect(hasInternetLyrics).toBe(false);
+  }, 15000);
+
+  it("enforces maximum cache size and evicts oldest entries", () => {
+    lyricsCache.clear();
+    for (let i = 0; i < MAX_LYRICS_CACHE_SIZE + 10; i++) {
+      setCachedLyrics(`key_${i}`, {
+        synced: false,
+        instrumental: false,
+        lines: [{ time: 0, text: `Line ${i}` }],
+      });
+    }
+
+    expect(lyricsCache.size).toBe(MAX_LYRICS_CACHE_SIZE);
+    expect(getCachedLyrics("key_0")).toBeUndefined();
+    expect(getCachedLyrics("key_9")).toBeUndefined();
+    expect(getCachedLyrics("key_10")).toBeDefined();
+    expect(getCachedLyrics(`key_${MAX_LYRICS_CACHE_SIZE + 9}`)).toBeDefined();
+
+    // Re-setting existing key does not evict another key
+    setCachedLyrics("key_10", {
+      synced: true,
+      instrumental: false,
+      lines: [{ time: 0, text: "Updated line" }],
+    });
+    expect(lyricsCache.size).toBe(MAX_LYRICS_CACHE_SIZE);
+    expect(getCachedLyrics("key_11")).toBeDefined();
+    expect(getCachedLyrics("key_10")?.synced).toBe(true);
+  });
+});
+
