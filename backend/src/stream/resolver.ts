@@ -7,7 +7,30 @@ interface CachedStream {
   expiresAt: number;
 }
 
-const streamCache = new Map<string, CachedStream>();
+export const MAX_STREAM_CACHE_SIZE = 150;
+export const streamCache = new Map<string, CachedStream>();
+
+export function addToStreamCache(id: string, entry: CachedStream) {
+  if (streamCache.has(id)) {
+    streamCache.delete(id);
+  } else if (streamCache.size >= MAX_STREAM_CACHE_SIZE) {
+    const now = Date.now();
+    for (const [key, value] of streamCache) {
+      if (value.expiresAt <= now) {
+        streamCache.delete(key);
+      }
+    }
+    if (streamCache.size >= MAX_STREAM_CACHE_SIZE) {
+      const oldestKey = streamCache.keys().next().value;
+      if (oldestKey) streamCache.delete(oldestKey);
+    }
+  }
+  streamCache.set(id, entry);
+}
+
+export function invalidateStreamCache(id: string) {
+  streamCache.delete(id);
+}
 
 // Cache soundcloud client instance
 let scInstance: Soundcloud | null = null;
@@ -18,36 +41,69 @@ function getSoundCloud(): Soundcloud {
   return scInstance;
 }
 
+let memoizedYtDlpPrefix: string[] | null = null;
+
 /**
  * Executes yt-dlp to get a direct playable audio stream URL.
  */
-async function resolveYouTubeUrl(videoId: string): Promise<string | null> {
+async function resolveYouTubeUrl(videoId: string, signal?: AbortSignal): Promise<string | null> {
+  if (signal?.aborted) return null;
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
   
-  // Try running python -m yt_dlp or yt-dlp
-  const commands = [
-    ["yt-dlp", "-g", "-f", "ba/b", ytUrl],
-    ["python", "-m", "yt_dlp", "-g", "-f", "ba/b", ytUrl],
-    ["py", "-3", "-m", "yt_dlp", "-g", "-f", "ba/b", ytUrl],
-  ];
+  // Try memoized prefix first if available; otherwise try known command prefixes
+  const candidatePrefixes: string[][] = memoizedYtDlpPrefix
+    ? [memoizedYtDlpPrefix]
+    : [
+        ["yt-dlp"],
+        ["python", "-m", "yt_dlp"],
+        ["py", "-3", "-m", "yt_dlp"],
+      ];
 
-  for (const cmd of commands) {
+  for (const prefix of candidatePrefixes) {
+    if (signal?.aborted) return null;
     try {
+      const cmd = [...prefix, "-g", "-f", "ba/b", ytUrl];
       const proc = Bun.spawn(cmd, {
         stdout: "pipe",
         stderr: "ignore",
       });
 
+      const onAbort = () => {
+        try {
+          proc.kill();
+        } catch {
+          // ignore
+        }
+      };
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
       const text = await new Response(proc.stdout).text();
       const exitCode = await proc.exited;
 
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+
+      if (signal?.aborted) return null;
+
       if (exitCode === 0 && text.trim().startsWith("http")) {
+        memoizedYtDlpPrefix = prefix;
         const streamUrl = text.trim().split("\n")[0].trim();
         return streamUrl;
       }
     } catch {
       // try next command variant
     }
+  }
+
+  if (signal?.aborted) return null;
+
+  // If the previously memoized prefix failed, invalidate and retry all variants once
+  if (memoizedYtDlpPrefix) {
+    memoizedYtDlpPrefix = null;
+    return resolveYouTubeUrl(videoId, signal);
   }
 
   return null;
@@ -83,9 +139,19 @@ async function resolveSoundCloudUrl(trackIdOrUrl: string): Promise<string | null
 /**
  * Main stream resolver with caching.
  */
-export async function resolveStreamUrl(id: string, provider: AudioProvider, permalink?: string): Promise<string | null> {
+export async function resolveStreamUrl(
+  id: string,
+  provider: AudioProvider,
+  permalink?: string,
+  signal?: AbortSignal
+): Promise<string | null> {
+  if (signal?.aborted) return null;
+
   const cached = streamCache.get(id);
   if (cached && cached.expiresAt > Date.now()) {
+    // Refresh LRU order on hit
+    streamCache.delete(id);
+    streamCache.set(id, cached);
     return cached.url;
   }
 
@@ -94,12 +160,14 @@ export async function resolveStreamUrl(id: string, provider: AudioProvider, perm
   if (provider === "sc") {
     resolvedUrl = await resolveSoundCloudUrl(permalink || id);
   } else {
-    resolvedUrl = await resolveYouTubeUrl(id);
+    resolvedUrl = await resolveYouTubeUrl(id, signal);
   }
 
+  if (signal?.aborted) return null;
+
   if (resolvedUrl) {
-    // Cache for 45 minutes
-    streamCache.set(id, {
+    // Cache for 45 minutes with bounded size
+    addToStreamCache(id, {
       url: resolvedUrl,
       provider,
       expiresAt: Date.now() + 45 * 60 * 1000,
