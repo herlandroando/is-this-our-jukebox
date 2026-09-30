@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import type { MemberInfo, MemberRole } from "../shared/types.ts";
+import UiIcon, { type IconName } from "./UiIcon.vue";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -18,11 +19,11 @@ const emit = defineEmits<{
 const newPasscode = ref("");
 const isEditingPasscode = ref(false);
 
-const availableRoles: { role: MemberRole; label: string; icon: string; weight: number }[] = [
-  { role: "dj", label: "DJ", icon: "🎧", weight: 3 },
-  { role: "vip", label: "VIP", icon: "⭐", weight: 2 },
-  { role: "member", label: "Member", icon: "👤", weight: 1 },
-  { role: "listener", label: "Listener", icon: "🔇", weight: 0 },
+const availableRoles: { role: MemberRole; label: string; icon: IconName; weight: number }[] = [
+  { role: "dj", label: "DJ", icon: "mic", weight: 3 },
+  { role: "vip", label: "VIP", icon: "star-filled", weight: 2 },
+  { role: "member", label: "Member", icon: "user", weight: 1 },
+  { role: "listener", label: "Listener", icon: "volume-x", weight: 0 },
 ];
 
 function onRoleChange(clientId: string, role: MemberRole) {
@@ -57,13 +58,17 @@ onBeforeUnmount(() => {
       <!-- Drawer Header -->
       <header class="drawer-header">
         <div class="header-title">
-          <span class="icon">👥</span>
+          <div class="header-icon-box">
+            <UiIcon name="users" :size="18" />
+          </div>
           <div>
             <h3>Room Members & Roles</h3>
-            <span class="member-count">{{ members.length }} {{ members.length === 1 ? 'device' : 'devices' }} connected</span>
+            <span class="member-count tabular-nums">{{ members.length }} {{ members.length === 1 ? 'device' : 'devices' }} connected</span>
           </div>
         </div>
-        <button class="btn-icon close-btn" @click="emit('close')">✕</button>
+        <button class="btn-icon close-btn" @click="emit('close')">
+          <UiIcon name="x" :size="16" />
+        </button>
       </header>
 
       <!-- Roles Legend -->
@@ -73,19 +78,31 @@ onBeforeUnmount(() => {
         </div>
         <div class="legend-grid">
           <div class="legend-item">
-            <span class="role-badge role-dj">🎧 DJ</span>
+            <span class="role-badge role-dj">
+              <UiIcon name="mic" :size="11" />
+              <span>DJ</span>
+            </span>
             <span class="legend-desc">Player remote + <strong>3x vote</strong></span>
           </div>
           <div class="legend-item">
-            <span class="role-badge role-vip">⭐ VIP</span>
+            <span class="role-badge role-vip">
+              <UiIcon name="star-filled" :size="11" />
+              <span>VIP</span>
+            </span>
             <span class="legend-desc">Curator + <strong>2x vote</strong></span>
           </div>
           <div class="legend-item">
-            <span class="role-badge role-member">👤 Member</span>
+            <span class="role-badge role-member">
+              <UiIcon name="user" :size="11" />
+              <span>Member</span>
+            </span>
             <span class="legend-desc">Standard + <strong>1x vote</strong></span>
           </div>
           <div class="legend-item">
-            <span class="role-badge role-listener">🔇 Listener</span>
+            <span class="role-badge role-listener">
+              <UiIcon name="volume-x" :size="11" />
+              <span>Listener</span>
+            </span>
             <span class="legend-desc">Audio only + <strong>0x vote</strong></span>
           </div>
         </div>
@@ -111,10 +128,10 @@ onBeforeUnmount(() => {
           >
             <div class="member-main">
               <div class="avatar-box" :class="`avatar-${member.role}`">
-                <span v-if="member.isHost">👑</span>
-                <span v-else-if="member.role === 'dj'">🎧</span>
-                <span v-else-if="member.role === 'vip'">⭐</span>
-                <span v-else>👤</span>
+                <UiIcon v-if="member.isHost" name="crown" :size="14" />
+                <UiIcon v-else-if="member.role === 'dj'" name="mic" :size="14" />
+                <UiIcon v-else-if="member.role === 'vip'" name="star-filled" :size="14" />
+                <UiIcon v-else name="user" :size="14" />
               </div>
 
               <div class="member-details">
@@ -123,7 +140,7 @@ onBeforeUnmount(() => {
                   <span v-if="member.clientId === currentClientId" class="you-tag">You</span>
                 </div>
                 <div class="ip-row">
-                  <span class="ip-text">{{ member.ip }}</span>
+                  <span class="ip-text tabular-nums">{{ member.ip }}</span>
                   <span class="role-badge" :class="`role-${member.role}`">
                     {{ member.role.toUpperCase() }}
                   </span>
@@ -141,7 +158,7 @@ onBeforeUnmount(() => {
                 :title="`${r.label}: ${r.weight}x vote weight`"
                 @click="onRoleChange(member.clientId, r.role)"
               >
-                <span>{{ r.icon }}</span>
+                <UiIcon :name="r.icon" :size="11" />
                 <span>{{ r.label }}</span>
               </button>
             </div>
@@ -157,7 +174,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="!isEditingPasscode" class="passcode-display-row">
-          <code class="passcode-pill glass-pill">office-dj</code>
+          <code class="passcode-pill glass-pill tabular-nums">office-dj</code>
           <button class="btn-secondary change-btn" @click="isEditingPasscode = true">Change Code</button>
         </div>
 
@@ -181,9 +198,9 @@ onBeforeUnmount(() => {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 1050;
   display: flex;
   justify-content: flex-end;
@@ -198,11 +215,17 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 1.25rem;
   padding: 1.5rem;
-  background: rgba(14, 16, 26, 0.95);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.6);
+  background: #0d1017;
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.7);
   overflow-y: auto;
   border-radius: 0;
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 .drawer-header {
@@ -217,18 +240,27 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
 }
 
-.header-title .icon {
-  font-size: 1.6rem;
+.header-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a5b4fc;
 }
 
 .header-title h3 {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 800;
   letter-spacing: -0.02em;
+  color: #fff;
 }
 
 .member-count {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
@@ -238,81 +270,71 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 0.6rem;
   background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.legend-header {
-  font-size: 0.75rem;
+.legend-title {
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--text-muted);
 }
 
 .legend-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+  gap: 0.5rem;
 }
 
 .legend-item {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
 }
 
 .legend-desc {
-  font-size: 0.72rem;
-  color: var(--text-secondary);
-}
-
-.members-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  flex: 1;
+  font-size: 0.68rem;
+  color: var(--text-muted);
 }
 
 .section-heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  margin-bottom: 0.65rem;
 }
 
 .section-heading h4 {
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 700;
+  color: #fff;
 }
 
 .section-heading .hint {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
 .member-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .member-card {
-  padding: 0.85rem 1rem;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-subtle);
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  transition: all var(--transition-fast);
+  gap: 0.6rem;
 }
 
-.member-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.member-card.is-host-card {
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.05);
+.member-card.is-self {
+  border-color: rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .member-main {
@@ -322,105 +344,96 @@ onBeforeUnmount(() => {
 }
 
 .avatar-box {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.15rem;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
   flex-shrink: 0;
-}
-
-.avatar-host {
-  background: rgba(245, 158, 11, 0.2);
 }
 
 .avatar-dj {
   background: rgba(139, 92, 246, 0.2);
+  color: #c084fc;
 }
 
 .avatar-vip {
   background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
 }
 
 .member-details {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
 }
 
 .name-row {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
 }
 
 .member-name {
-  font-size: 0.9rem;
-  font-weight: 700;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .you-tag {
   font-size: 0.65rem;
-  font-weight: 700;
-  color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.15);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-full);
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
 }
 
 .ip-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
+  margin-top: 0.15rem;
 }
 
 .ip-text {
-  font-size: 0.72rem;
-  font-family: monospace;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
 .role-switcher {
   display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  background: rgba(0, 0, 0, 0.3);
+  gap: 0.2rem;
+  padding: 0.2rem;
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .role-switch-btn {
   flex: 1;
-  padding: 0.3rem 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.4rem;
   border-radius: var(--radius-full);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   color: var(--text-muted);
-  gap: 0.25rem;
   transition: all var(--transition-fast);
 }
 
 .role-switch-btn:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .role-switch-btn.active.btn-dj {
   background: rgba(139, 92, 246, 0.3);
   color: #c084fc;
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
 }
 
 .role-switch-btn.active.btn-vip {
-  background: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.3);
   color: #34d399;
 }
 
@@ -436,38 +449,39 @@ onBeforeUnmount(() => {
 
 .passcode-section {
   padding: 1.1rem;
+  margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.65rem;
   background: rgba(255, 255, 255, 0.03);
 }
 
 .passcode-info h4 {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 700;
+  color: #fff;
 }
 
 .passcode-info p {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
 .passcode-display-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.65rem;
 }
 
 .passcode-pill {
-  font-family: monospace;
-  font-size: 0.85rem;
-  padding: 0.35rem 0.85rem;
-  color: var(--accent-primary);
-  font-weight: 700;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  color: #a5b4fc;
 }
 
 .change-btn {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   padding: 0.35rem 0.75rem;
 }
 
@@ -478,12 +492,11 @@ onBeforeUnmount(() => {
 
 .passcode-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.06);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  background: rgba(0, 0, 0, 0.35);
   border: 1px solid var(--border-subtle);
-  outline: none;
   color: #fff;
-  padding: 0.4rem 0.75rem;
-  font-family: inherit;
-  font-size: 0.85rem;
+  outline: none;
 }
 </style>

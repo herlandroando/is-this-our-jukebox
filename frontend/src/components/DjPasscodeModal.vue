@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import type { MemberRole } from "../shared/types.ts";
+import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -52,9 +53,12 @@ onBeforeUnmount(() => {
     <div class="passcode-card glass-panel">
       <header class="modal-header">
         <div class="header-icon-wrap" :class="{ 'is-dj': currentRole === 'dj' }">
-          <span class="header-icon">{{ currentRole === 'dj' ? '🎧' : '🔑' }}</span>
+          <UiIcon v-if="currentRole === 'dj'" name="mic" :size="22" />
+          <UiIcon v-else name="crown" :size="22" />
         </div>
-        <button class="btn-icon close-btn" @click="emit('close')">✕</button>
+        <button class="btn-icon close-btn" @click="emit('close')">
+          <UiIcon name="x" :size="16" />
+        </button>
       </header>
 
       <div class="card-content">
@@ -62,10 +66,22 @@ onBeforeUnmount(() => {
           <h3>DJ Status Active!</h3>
           <p>You have full remote playback controls and <strong>3x vote power</strong> enabled on this device.</p>
           <div class="perks-list">
-            <div class="perk-item">✓ Remote Play, Pause & Skip</div>
-            <div class="perk-item">✓ Audio seek scrubbing</div>
-            <div class="perk-item">✓ +3 votes per upvote</div>
-            <div class="perk-item">✓ Remove tracks from queue</div>
+            <div class="perk-item">
+              <UiIcon name="check" :size="13" />
+              <span>Remote Play, Pause & Skip</span>
+            </div>
+            <div class="perk-item">
+              <UiIcon name="check" :size="13" />
+              <span>Audio seek scrubbing</span>
+            </div>
+            <div class="perk-item">
+              <UiIcon name="check" :size="13" />
+              <span>+3 votes per upvote</span>
+            </div>
+            <div class="perk-item">
+              <UiIcon name="check" :size="13" />
+              <span>Remove tracks from queue</span>
+            </div>
           </div>
           <button class="btn-primary done-btn" @click="emit('close')">Got It</button>
         </div>
@@ -88,17 +104,24 @@ onBeforeUnmount(() => {
               :disabled="!passcode.trim()"
               @click="submitPasscode"
             >
-              Unlock 🎧
+              <span>Unlock</span>
+              <UiIcon name="mic" :size="14" />
             </button>
           </div>
 
           <div class="role-info-card glass-panel">
             <div class="role-stat">
-              <span class="role-badge role-dj">🎧 DJ</span>
+              <span class="role-badge role-dj">
+                <UiIcon name="mic" :size="11" />
+                <span>DJ</span>
+              </span>
               <span>Remote controls + 3x vote weight</span>
             </div>
             <div class="role-stat">
-              <span class="role-badge role-vip">⭐ VIP</span>
+              <span class="role-badge role-vip">
+                <UiIcon name="star-filled" :size="11" />
+                <span>VIP</span>
+              </span>
               <span>2x democratic vote weight</span>
             </div>
           </div>
@@ -112,9 +135,9 @@ onBeforeUnmount(() => {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 1200;
   display: flex;
   align-items: center;
@@ -126,9 +149,9 @@ onBeforeUnmount(() => {
   width: 100%;
   max-width: 420px;
   border-radius: var(--radius-lg);
-  background: #10121d;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: var(--shadow-lg);
+  background: #0d1017;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -142,21 +165,22 @@ onBeforeUnmount(() => {
 }
 
 .header-icon-wrap {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.06);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.6rem;
+  color: var(--text-secondary);
 }
 
 .header-icon-wrap.is-dj {
   background: rgba(139, 92, 246, 0.2);
   border-color: rgba(139, 92, 246, 0.4);
   box-shadow: 0 0 20px -2px rgba(139, 92, 246, 0.4);
+  color: #c084fc;
 }
 
 .card-content {
@@ -188,8 +212,8 @@ onBeforeUnmount(() => {
 
 .passcode-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   outline: none;
   color: #fff;
   padding: 0.65rem 1rem;
@@ -241,6 +265,12 @@ onBeforeUnmount(() => {
   font-size: 0.82rem;
   color: #d8b4fe;
   font-weight: 500;
+}
+
+.perk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .done-btn {

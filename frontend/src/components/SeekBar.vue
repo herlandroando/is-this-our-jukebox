@@ -188,7 +188,7 @@ function onKeyDown(e: KeyboardEvent) {
 .seekbar-root {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
   width: 100%;
   user-select: none;
   -webkit-user-select: none;
@@ -198,10 +198,11 @@ function onKeyDown(e: KeyboardEvent) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.75rem;
-  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 
 .compact .time-row {
@@ -211,7 +212,7 @@ function onKeyDown(e: KeyboardEvent) {
 
 .track-hitbox {
   position: relative;
-  height: 24px;
+  height: 22px;
   display: flex;
   align-items: center;
   cursor: default;
@@ -226,17 +227,18 @@ function onKeyDown(e: KeyboardEvent) {
 .track-bg {
   position: relative;
   width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-full);
   overflow: visible;
-  transition: height 0.15s ease, background-color 0.15s ease;
+  transition: height 0.18s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.18s ease;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .seekable .track-hitbox:hover .track-bg,
 .seekable .track-hitbox:focus-visible .track-bg {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 7px;
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .track-fill {
@@ -244,9 +246,10 @@ function onKeyDown(e: KeyboardEvent) {
   top: 0;
   left: 0;
   bottom: 0;
-  background: var(--accent-gradient, linear-gradient(135deg, #6366f1, #a855f7));
+  background: var(--accent-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
   border-radius: var(--radius-full);
   pointer-events: none;
+  box-shadow: 0 0 12px -2px rgba(99, 102, 241, 0.6);
   transition: width 0.05s linear;
 }
 
@@ -257,14 +260,14 @@ function onKeyDown(e: KeyboardEvent) {
 .track-thumb {
   position: absolute;
   top: 50%;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5), 0 0 12px rgba(168, 85, 247, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 0 3px rgba(99, 102, 241, 0.35);
   transform: translate(-50%, -50%) scale(0);
   pointer-events: none;
-  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
   z-index: 2;
 }
 
@@ -276,23 +279,35 @@ function onKeyDown(e: KeyboardEvent) {
 
 .track-thumb.dragging {
   transform: translate(-50%, -50%) scale(1.25);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7), 0 0 18px rgba(168, 85, 247, 0.7);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.8), 0 0 0 5px rgba(99, 102, 241, 0.5);
 }
 
 .hover-tooltip {
   position: absolute;
-  top: -22px;
+  top: -24px;
   transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.95);
+  background: #0e111a;
   color: #fff;
   font-size: 0.68rem;
-  font-family: "JetBrains Mono", monospace;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
   pointer-events: none;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.4);
   z-index: 10;
+}
+
+.hover-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 4px 4px 0 4px;
+  border-style: solid;
+  border-color: #0e111a transparent transparent transparent;
 }
 </style>
