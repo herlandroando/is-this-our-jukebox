@@ -4,11 +4,12 @@ import { randomUUID } from "node:crypto";
 import { getAdminToken } from "./adminToken.ts";
 import { getLanIPv4 } from "./lan.ts";
 import { openBrowser } from "./openBrowser.ts";
-import { searchTracks } from "./search/index.ts";
-import { resolveStreamUrl } from "./stream/resolver.ts";
+import { searchTracks, getRelatedTracks } from "./search/index.ts";
+import { resolveStreamUrl, invalidateStreamCache } from "./stream/resolver.ts";
 import { getStaticMap } from "./static.ts";
 import { wsHub, type WsUserData } from "./ws/server.ts";
 import { getLyrics } from "./lyrics/index.ts";
+import { jukeboxDb } from "./db.ts";
 import type { AudioProvider } from "./types.ts";
 
 const app = new Hono();
@@ -37,13 +38,33 @@ app.get("/api/lyrics", async (c) => {
   return c.json(lyrics);
 });
 
+app.get("/api/tracks/top", (c) => {
+  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit") || 30)));
+  const topTracks = jukeboxDb.getTopTracks(limit);
+  return c.json(topTracks);
+});
+
+app.get("/api/tracks/recent", (c) => {
+  const clientId = c.req.query("clientId") || undefined;
+  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit") || 30)));
+  const recentTracks = jukeboxDb.getRecentTracks(clientId, limit);
+  return c.json(recentTracks);
+});
+
+app.get("/api/tracks/related", async (c) => {
+  const videoId = c.req.query("videoId") || undefined;
+  const artist = c.req.query("artist") || undefined;
+  const tracks = await getRelatedTracks(videoId, artist);
+  return c.json(tracks);
+});
+
 app.get("/api/search", async (c) => {
   const q = c.req.query("q") || "";
   const provider = c.req.query("p") as AudioProvider | undefined;
-  if (!q.trim()) {
+  if (!q.trim() || c.req.raw.signal.aborted) {
     return c.json([]);
   }
-  const results = await searchTracks(q, provider);
+  const results = await searchTracks(q, provider, c.req.raw.signal);
   return c.json(results);
 });
 
@@ -53,11 +74,19 @@ app.get("/api/search", async (c) => {
  * completely bypassing YouTube iframe embed restrictions!
  */
 app.get("/api/stream/:id", async (c) => {
+  if (c.req.raw.signal.aborted) {
+    return new Response(null, { status: 499 });
+  }
+
   const id = c.req.param("id");
   const queryProvider = c.req.query("p") as AudioProvider | undefined;
+  const permalink = c.req.query("permalink") || undefined;
   const provider: AudioProvider = id.startsWith("sc:") || queryProvider === "sc" ? "sc" : "yt";
 
-  const streamUrl = await resolveStreamUrl(id, provider);
+  const streamUrl = await resolveStreamUrl(id, provider, permalink, c.req.raw.signal);
+  if (c.req.raw.signal.aborted) {
+    return new Response(null, { status: 499 });
+  }
   if (!streamUrl) {
     return c.text("Audio stream could not be resolved", 404);
   }
@@ -75,7 +104,12 @@ app.get("/api/stream/:id", async (c) => {
   try {
     const upstreamRes = await fetch(streamUrl, {
       headers: fetchHeaders,
+      signal: c.req.raw.signal,
     });
+
+    if (upstreamRes.status >= 400 && upstreamRes.status < 500) {
+      invalidateStreamCache(id);
+    }
 
     const responseHeaders = new Headers();
     responseHeaders.set("Content-Type", upstreamRes.headers.get("content-type") || "audio/webm");
@@ -91,7 +125,10 @@ app.get("/api/stream/:id", async (c) => {
       status: upstreamRes.status,
       headers: responseHeaders,
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === "AbortError" || c.req.raw.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
     console.error(`[stream] Error proxying audio stream for ${id}:`, err);
     return c.text("Stream proxy error", 502);
   }
@@ -104,15 +141,24 @@ app.get("*", async (c) => {
 
   const exactAsset = staticMap.assets.get(urlPath);
   if (exactAsset) {
+    const headers: Record<string, string> = { "Content-Type": exactAsset.contentType };
+    if (urlPath.startsWith("/assets/")) {
+      headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    } else if (urlPath === "/" || urlPath === "/index.html" || exactAsset.contentType.includes("text/html")) {
+      headers["Cache-Control"] = "no-cache";
+    }
     return new Response(exactAsset.body as unknown as BodyInit, {
-      headers: { "Content-Type": exactAsset.contentType },
+      headers,
     });
   }
 
   // SPA fallback to index.html
   if (staticMap.indexHtml) {
     return new Response(staticMap.indexHtml as unknown as BodyInit, {
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache",
+      },
     });
   }
 

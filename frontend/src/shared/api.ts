@@ -1,4 +1,4 @@
-import type { AudioProvider, LyricsData, SearchResult } from "./types.ts";
+import type { AudioProvider, LyricsData, SearchResult, TopTrackResult } from "./types.ts";
 
 export interface WhoamiResponse {
   lanIp: string;
@@ -8,6 +8,34 @@ export interface WhoamiResponse {
 export async function whoami(): Promise<WhoamiResponse> {
   const res = await fetch("/api/whoami");
   if (!res.ok) throw new Error(`whoami failed: ${res.statusText}`);
+  return await res.json();
+}
+
+export async function getTopTracks(limit: number = 30): Promise<TopTrackResult[]> {
+  const res = await fetch(`/api/tracks/top?limit=${limit}`);
+  if (!res.ok) throw new Error(`getTopTracks failed: ${res.statusText}`);
+  return await res.json();
+}
+
+export async function getRecentTracks(clientId?: string, limit: number = 30): Promise<SearchResult[]> {
+  const url = clientId
+    ? `/api/tracks/recent?clientId=${encodeURIComponent(clientId)}&limit=${limit}`
+    : `/api/tracks/recent?limit=${limit}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`getRecentTracks failed: ${res.statusText}`);
+  return await res.json();
+}
+
+export async function getRelatedTracks(
+  videoId?: string,
+  artist?: string,
+  signal?: AbortSignal
+): Promise<SearchResult[]> {
+  const params = new URLSearchParams();
+  if (videoId) params.set("videoId", videoId);
+  if (artist) params.set("artist", artist);
+  const res = await fetch(`/api/tracks/related?${params.toString()}`, { signal });
+  if (!res.ok) return [];
   return await res.json();
 }
 
@@ -38,6 +66,10 @@ export async function fetchLyrics(
   return await res.json();
 }
 
-export function getStreamUrl(id: string, provider: AudioProvider): string {
-  return `/api/stream/${encodeURIComponent(id)}?p=${encodeURIComponent(provider)}`;
+export function getStreamUrl(id: string, provider: AudioProvider, permalink?: string): string {
+  let url = `/api/stream/${encodeURIComponent(id)}?p=${encodeURIComponent(provider)}`;
+  if (permalink) {
+    url += `&permalink=${encodeURIComponent(permalink)}`;
+  }
+  return url;
 }

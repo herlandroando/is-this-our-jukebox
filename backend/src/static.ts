@@ -38,7 +38,10 @@ export async function buildStaticMap(): Promise<StaticMap> {
     }
   } else {
     // Development mode fallback: read from disk if frontend/dist exists
-    const distPath = join(process.cwd(), "frontend", "dist");
+    const rootDir = process.cwd();
+    const distPath = existsSync(join(rootDir, "frontend", "dist"))
+      ? join(rootDir, "frontend", "dist")
+      : join(rootDir, "dist");
     const indexPath = join(distPath, "index.html");
     if (existsSync(indexPath)) {
       try {

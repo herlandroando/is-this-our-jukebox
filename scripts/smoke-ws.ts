@@ -267,11 +267,35 @@ async function runTests() {
   await karaokePromise;
   console.log("[smoke] ✓ Karaoke mode enable & intensity level broadcast verified!");
 
+  // Test 13: /api/tracks/top endpoint
+  console.log("[smoke] Test 13: Testing /api/tracks/top endpoint...");
+  const topRes = await fetch(`http://127.0.0.1:${PORT}/api/tracks/top`);
+  if (!topRes.ok) throw new Error("top tracks API failed");
+  const topData = await topRes.json();
+  if (!Array.isArray(topData)) throw new Error("invalid top tracks format");
+  console.log(`[smoke] ✓ /api/tracks/top returned array with ${topData.length} items`);
+
+  // Test 14: /api/tracks/recent endpoint
+  console.log("[smoke] Test 14: Testing /api/tracks/recent endpoint...");
+  const recentRes = await fetch(`http://127.0.0.1:${PORT}/api/tracks/recent`);
+  if (!recentRes.ok) throw new Error("recent tracks API failed");
+  const recentData = await recentRes.json();
+  if (!Array.isArray(recentData)) throw new Error("invalid recent tracks format");
+  console.log(`[smoke] ✓ /api/tracks/recent returned array with ${recentData.length} items`);
+
+  // Test 15: /api/tracks/related endpoint
+  console.log("[smoke] Test 15: Testing /api/tracks/related endpoint...");
+  const relatedRes = await fetch(`http://127.0.0.1:${PORT}/api/tracks/related?artist=Rick+Astley`);
+  if (!relatedRes.ok) throw new Error("related tracks API failed");
+  const relatedData = await relatedRes.json();
+  if (!Array.isArray(relatedData)) throw new Error("invalid related tracks format");
+  console.log(`[smoke] ✓ /api/tracks/related returned array with ${relatedData.length} items`);
+
   ws.close();
   adminWs.close();
   serverProc.kill();
   console.log("\n=======================================================");
-  console.log(" 🎉 ALL 12 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
+  console.log(" 🎉 ALL 15 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
   console.log("=======================================================\n");
   process.exit(0);
 }

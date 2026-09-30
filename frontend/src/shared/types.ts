@@ -12,6 +12,11 @@ export interface SearchResult {
   duration: number;
 }
 
+export interface TopTrackResult extends SearchResult {
+  playCount: number;
+  lastPlayedAt?: number;
+}
+
 export type QueueItemStatus = "pending" | "resolving" | "ready" | "playing" | "played" | "failed";
 
 export interface TrackVoter {
@@ -45,6 +50,7 @@ export interface LyricLine {
   time: number; // in seconds
   text: string;
   translation?: string;
+  romaji?: string;
 }
 
 export interface LyricsData {
