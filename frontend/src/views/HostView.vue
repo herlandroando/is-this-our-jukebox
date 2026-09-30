@@ -6,12 +6,14 @@ import { whoami } from "../shared/api.ts";
 import AudioEngine from "../components/AudioEngine.vue";
 import Visualizer from "../components/Visualizer.vue";
 import QueueCard from "../components/QueueCard.vue";
-import SearchModal from "../components/SearchModal.vue";
+import CatalogView from "../components/CatalogView.vue";
+import LyricsView from "../components/LyricsView.vue";
 import QrPanel from "../components/QrPanel.vue";
 import MemberDrawer from "../components/MemberDrawer.vue";
-import LyricsModal from "../components/LyricsModal.vue";
 import SeekBar from "../components/SeekBar.vue";
+import UiIcon from "../components/UiIcon.vue";
 import { usePlaybackProgress } from "../shared/usePlaybackProgress.ts";
+import { useFavorites } from "../shared/useFavorites.ts";
 import type { MemberRole } from "../shared/types.ts";
 
 const route = useRoute();
@@ -23,13 +25,33 @@ const token = computed(() => {
   return "";
 });
 
-const isSearchOpen = ref(false);
-const isMemberDrawerOpen = ref(false);
-const isLyricsOpen = ref(false);
+type HostTab = "queue" | "catalog" | "lyrics";
+const activeTab = ref<HostTab>("queue");
 
+const isMemberDrawerOpen = ref(false);
+const prefillCatalogQuery = ref("");
 const analyserNode = ref<AnalyserNode | null>(null);
 const clientUrl = ref("");
 const hostNickname = ref("Host DJ 🎧");
+
+const { isFavorite, toggleFavorite } = useFavorites();
+
+const crossfadeEnabled = ref(localStorage.getItem("jukebox_crossfade_enabled") !== "false");
+const crossfadeDuration = ref(Number(localStorage.getItem("jukebox_crossfade_duration")) || 4);
+
+const effectiveCrossfadeDuration = computed(() => {
+  return crossfadeEnabled.value ? crossfadeDuration.value : 0;
+});
+
+function toggleCrossfade() {
+  crossfadeEnabled.value = !crossfadeEnabled.value;
+  localStorage.setItem("jukebox_crossfade_enabled", String(crossfadeEnabled.value));
+}
+
+function setCrossfadeDuration(val: number) {
+  crossfadeDuration.value = val;
+  localStorage.setItem("jukebox_crossfade_duration", String(val));
+}
 
 const state = computed(() => jukeboxClient.state.value);
 const nowPlaying = computed(() => state.value?.nowPlaying ?? null);
@@ -45,6 +67,31 @@ const activeListeners = computed(() => state.value?.activeListeners ?? 1);
 const members = computed(() => state.value?.members ?? []);
 const status = computed(() => jukeboxClient.status.value);
 const currentClientId = computed(() => jukeboxClient.clientId.value);
+
+const displayArtist = computed(() => {
+  const a = nowPlaying.value?.artist;
+  if (!a || /^\d+:\d{2}(:\d{2})?$/.test(a.trim())) {
+    const t = nowPlaying.value?.title || "";
+    if (t.includes(" - ")) {
+      const parts = t.split(" - ");
+      return parts[0].trim();
+    }
+    return "YouTube Music";
+  }
+  return a;
+});
+
+const quickPickVibes = [
+  { label: "Sheila On 7", query: "Sheila On 7 Dan" },
+  { label: "Dewa 19", query: "Dewa 19 Kangen" },
+  { label: "Queen", query: "Queen Bohemian Rhapsody" },
+  { label: "Coldplay", query: "Coldplay Fix You" },
+  { label: "Bruno Mars", query: "Bruno Mars Just The Way You Are" },
+  { label: "Indie Indo", query: "Hindia Rumah Ke Rumah" },
+  { label: "City Pop", query: "Miki Matsubara Stay With Me" },
+  { label: "Anime Hits", query: "Yoasobi Idol" },
+  { label: "Lofi Chill", query: "Lofi Hip Hop beats" },
+];
 
 const {
   currentTime,
@@ -144,21 +191,20 @@ function onSetDjPasscode(passcode: string) {
   jukeboxClient.setDjPasscode(passcode);
 }
 
-function onLyricsSeek(time: number) {
-  seekTo(time);
+function triggerQuickPick(query: string) {
+  prefillCatalogQuery.value = query;
+  activeTab.value = "catalog";
 }
 
-function formatDuration(sec: number): string {
-  if (!sec) return "0:00";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function reRequestTrack(title: string, artist: string) {
+  prefillCatalogQuery.value = `${title} ${artist}`;
+  activeTab.value = "catalog";
 }
 </script>
 
 <template>
-  <div class="host-page">
-    <!-- Invisible Audio Engine with DSP Karaoke Processor -->
+  <div class="host-container min-h-screen max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col gap-6 text-slate-100">
+    <!-- Invisible Web Audio DSP Player -->
     <AudioEngine
       v-if="outputMode === 'browser'"
       :track="nowPlaying"
@@ -166,84 +212,141 @@ function formatDuration(sec: number): string {
       :volume="volume"
       :karaokeEnabled="karaokeEnabled"
       :karaokeLevel="karaokeLevel"
+      :crossfadeDuration="effectiveCrossfadeDuration"
       @analyserReady="onAnalyserReady"
       @timeUpdate="onAudioTimeUpdate"
     />
 
-    <header class="top-nav glass-panel">
-      <div class="brand">
-        <span class="logo-icon">📻</span>
-        <div class="brand-text">
-          <h1>Office Jukebox</h1>
-          <span class="role-badge role-host">👑 Host Center</span>
+    <!-- Studio Top Navigation Header -->
+    <header class="glass-panel px-5 py-3.5 rounded-2xl flex items-center justify-between gap-4 shadow-lg border-white/10 backdrop-blur-xl">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl overflow-hidden border border-indigo-500/35 flex items-center justify-center bg-slate-900/60 shadow-[0_0_20px_rgba(99,102,241,0.25)] shrink-0">
+          <img src="/logo.png" alt="IsThisOurJukebox Logo" class="w-full h-full object-cover" />
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-2">
+            <h1 class="text-base sm:text-lg font-black tracking-tight text-white leading-tight">IsThisOurJukebox</h1>
+            <span class="role-badge role-host text-[10px] px-2 py-0.5">
+              <UiIcon name="crown" :size="11" />
+              <span>Host Studio</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 font-medium">Standalone High-Fidelity LAN Broadcast</p>
         </div>
       </div>
 
-      <div class="status-group">
-        <span class="status-indicator" :class="status">
-          <span class="dot"></span>
-          {{ status === 'connected' ? 'Live on Air' : status }}
-        </span>
-        <button class="btn-secondary members-btn glass-pill" @click="isMemberDrawerOpen = true">
-          👥 {{ members.length || activeListeners }} in Room
-        </button>
-        <button class="btn-primary" @click="isSearchOpen = true">
-          + Request Song
+      <div class="flex items-center gap-2.5">
+        <!-- Live Connection Status Indicator -->
+        <div class="glass-pill px-3 py-1 flex items-center gap-2 text-xs font-semibold text-slate-300">
+          <span
+            class="w-2 h-2 rounded-full transition-all duration-300"
+            :class="status === 'connected' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-amber-400'"
+          ></span>
+          <span>{{ status === 'connected' ? 'Live on Air' : status }}</span>
+        </div>
+
+        <!-- Room Member Management Drawer -->
+        <button
+          class="glass-pill px-3.5 py-1.5 flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white hover:border-white/20 active:scale-95 transition-all cursor-pointer shadow-sm"
+          title="View connected room members and manage DJ access"
+          @click="isMemberDrawerOpen = true"
+        >
+          <UiIcon name="users" :size="14" class="text-indigo-400" />
+          <span class="tabular-nums">{{ members.length || activeListeners }} in Room</span>
         </button>
       </div>
     </header>
 
-    <main class="host-grid">
-      <!-- Left Column: Player & Controls -->
-      <section class="player-column">
+    <!-- Main Studio Dashboard: 2-Column Responsive Layout -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- LEFT COLUMN: Sticky Hero Player, Studio Controls, and QR Panel -->
+      <section class="lg:col-span-5 xl:col-span-4 flex flex-col gap-5 sticky top-5">
         <!-- Now Playing Hero Card -->
-        <div class="now-playing-card glass-panel">
-          <div class="ambient-glow" :style="{ backgroundImage: nowPlaying?.thumbnail ? `url(${nowPlaying.thumbnail})` : 'none' }"></div>
+        <div class="now-playing-card glass-panel relative overflow-hidden p-5 sm:p-6 rounded-3xl flex flex-col gap-4 shadow-xl border-white/10">
+          <!-- Ambient Backlight Projection -->
+          <div
+            class="ambient-glow"
+            :style="{
+              backgroundImage: nowPlaying?.thumbnail ? `url(${nowPlaying.thumbnail})` : 'none',
+              opacity: isPlaying ? '0.45' : '0.2'
+            }"
+          ></div>
 
-          <div class="card-content">
-            <div class="cover-wrapper">
-              <img v-if="nowPlaying?.thumbnail" :src="nowPlaying.thumbnail" class="cover-art" alt="Album Cover" />
-              <div v-else class="cover-placeholder">🎵</div>
-              <span v-if="nowPlaying" class="provider-badge" :class="`badge-${nowPlaying.provider}`">
-                {{ nowPlaying.provider.toUpperCase() }}
-              </span>
+          <!-- Album Art & Track Meta -->
+          <div class="relative z-10 flex gap-4 items-center">
+            <div class="vinyl-wrapper relative shrink-0" :class="{ 'is-playing': isPlaying }">
+              <div class="vinyl-art w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-black/60 shadow-[0_8px_24px_rgba(0,0,0,0.6)] border border-white/10 relative">
+                <img
+                  v-if="nowPlaying?.thumbnail"
+                  :src="nowPlaying.thumbnail"
+                  :alt="nowPlaying.title"
+                  class="w-full h-full object-cover select-none"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center text-slate-500 bg-obsidian-850">
+                  <UiIcon name="disc" :size="36" strokeWidth="1.2" class="empty-disc-icon" />
+                </div>
+
+                <!-- Live Status Beacon Pill -->
+                <span
+                  v-if="isPlaying"
+                  class="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-emerald-500/40 text-[9px] font-black tracking-wider text-emerald-400 flex items-center gap-1 uppercase"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>LIVE</span>
+                </span>
+              </div>
             </div>
 
-            <div class="track-details">
-              <span v-if="nowPlaying?.requestedBy" class="dj-pill glass-pill">
-                Requested by {{ nowPlaying.requestedBy }}
-              </span>
-              <h2 class="title">{{ nowPlaying?.title || "Jukebox is idle" }}</h2>
-              <p class="artist">{{ nowPlaying?.artist || "Queue empty — Auto-DJ ready to groove" }}</p>
-              
-              <div class="visualizer-wrapper">
+            <!-- Track Details -->
+            <div class="flex-1 min-w-0 flex flex-col gap-1">
+              <div class="flex items-center justify-between gap-2 flex-wrap mb-0.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span v-if="nowPlaying?.requestedBy" class="glass-pill px-2.5 py-0.5 text-[11px] font-medium text-indigo-300 flex items-center gap-1">
+                    <UiIcon name="user" :size="10" />
+                    <span class="truncate max-w-[130px]">Requested by {{ nowPlaying.requestedBy }}</span>
+                  </span>
+                  <span v-else class="glass-pill px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300 flex items-center gap-1">
+                    <UiIcon name="sparkles" :size="10" />
+                    <span>Auto-Radio Ready</span>
+                  </span>
+
+                  <span
+                    v-if="karaokeEnabled"
+                    class="glass-pill px-2 py-0.5 text-[10px] font-bold text-pink-300 bg-pink-500/15 border-pink-500/35 flex items-center gap-1"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse"></span>
+                    <span>Vocal Cut {{ karaokeLevel }}%</span>
+                  </span>
+                </div>
+
+                <button
+                  v-if="nowPlaying"
+                  class="glass-pill w-7 h-7 flex items-center justify-center active:scale-90 transition-all cursor-pointer"
+                  :class="isFavorite(nowPlaying.id) ? 'text-amber-400 bg-amber-400/15 border-amber-400/40 shadow-[0_0_12px_rgba(251,191,36,0.3)]' : 'text-slate-400 hover:text-amber-300'"
+                  :title="isFavorite(nowPlaying.id) ? 'Remove Favorite' : 'Save to Favorites'"
+                  @click="toggleFavorite(nowPlaying)"
+                >
+                  <UiIcon v-if="isFavorite(nowPlaying.id)" name="star-filled" :size="13" />
+                  <UiIcon v-else name="star" :size="13" />
+                </button>
+              </div>
+
+              <h2 class="text-base sm:text-lg font-extrabold tracking-tight text-white truncate leading-snug" :title="nowPlaying?.title || 'Jukebox is idle'">
+                {{ nowPlaying?.title || "Jukebox is idle" }}
+              </h2>
+              <p class="text-xs sm:text-sm text-slate-400 truncate font-medium">
+                {{ nowPlaying ? displayArtist : "Queue empty — Auto-DJ ready to groove" }}
+              </p>
+
+              <!-- Interactive Visualizer -->
+              <div class="w-full mt-2 h-8 rounded-lg overflow-hidden bg-black/30 border border-white/5 flex items-center justify-center">
                 <Visualizer :analyser="analyserNode" :isPlaying="isPlaying" />
               </div>
             </div>
           </div>
 
-          <!-- Real-Time Karaoke Quick-Access Banner -->
-          <transition name="karaoke-banner-pop">
-            <div v-if="karaokeEnabled && nowPlaying" class="karaoke-banner glass-panel">
-              <div class="karaoke-banner-left">
-                <span class="karaoke-pulse-icon">🎤</span>
-                <div class="karaoke-banner-info">
-                  <div class="karaoke-banner-title">
-                    <span class="banner-heading">Karaoke Mode Active</span>
-                    <span class="karaoke-cut-badge">Vocal Cut {{ karaokeLevel }}%</span>
-                  </div>
-                  <span class="karaoke-banner-desc">Real-time center cancellation with punchy bass preservation</span>
-                </div>
-              </div>
-              <button class="karaoke-sing-btn" @click="isLyricsOpen = true">
-                <span>Sing Along (Lyrics)</span>
-                <span class="arrow-up-right">↗</span>
-              </button>
-            </div>
-          </transition>
-
-          <!-- Progress Bar / Seekbar -->
-          <div class="progress-section">
+          <!-- Progress Scrubber -->
+          <div class="relative z-10 pt-2 border-t border-white/5">
             <SeekBar
               :currentTime="currentTime"
               :duration="duration || nowPlaying?.duration || 0"
@@ -253,166 +356,376 @@ function formatDuration(sec: number): string {
             />
           </div>
 
-          <!-- Transport Bar -->
-          <div class="transport-bar">
-            <button class="play-btn" :class="{ playing: isPlaying }" @click="togglePlay">
-              <span v-if="isPlaying">⏸</span>
-              <span v-else>▶</span>
-            </button>
+          <!-- Transport Controls -->
+          <div class="relative z-10 flex items-center justify-between gap-3 pt-1 flex-wrap">
+            <div class="flex items-center gap-2">
+              <!-- Play / Pause -->
+              <button
+                class="w-11 h-11 rounded-full bg-white text-black font-bold flex items-center justify-center shadow-[0_4px_16px_rgba(255,255,255,0.3)] active:scale-95 transition-transform cursor-pointer"
+                :title="isPlaying ? 'Pause' : 'Play'"
+                @click="togglePlay"
+              >
+                <UiIcon v-if="isPlaying" name="pause" :size="18" />
+                <UiIcon v-else name="play" :size="18" style="margin-left: 2px" />
+              </button>
 
-            <button class="btn-secondary skip-btn" @click="skip">
-              <span>Next</span> ⏭
-            </button>
+              <!-- Skip Track -->
+              <button
+                class="btn-secondary px-3.5 py-2 text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95"
+                title="Skip to next song"
+                @click="skip"
+              >
+                <span>Next</span>
+                <UiIcon name="skip-forward" :size="13" />
+              </button>
 
-            <button
-              class="btn-secondary lyrics-btn"
-              title="Karaoke Synced Lyrics"
-              @click="isLyricsOpen = true"
-            >
-              🎤 Lyrics
-            </button>
+              <!-- Lyrics Stage Switcher -->
+              <button
+                class="glass-pill px-3 py-2 text-xs font-semibold flex items-center gap-1.5 text-purple-300 hover:text-white cursor-pointer active:scale-95"
+                :class="{ 'bg-pink-500/20 border-pink-500/40 text-pink-200': activeTab === 'lyrics' }"
+                title="Switch to Live Synced Lyrics"
+                @click="activeTab = 'lyrics'"
+              >
+                <UiIcon name="mic" :size="13" />
+                <span>Lyrics</span>
+              </button>
 
-            <button
-              class="btn-secondary karaoke-btn"
-              :class="{ active: karaokeEnabled }"
-              title="Toggle Real-Time Karaoke Mode (No Voice / Just Music)"
-              @click="toggleKaraoke"
-            >
-              <span class="karaoke-btn-mic">🎤</span>
-              <span>Karaoke</span>
-              <span v-if="karaokeEnabled" class="karaoke-pill-tag">{{ karaokeLevel }}%</span>
-            </button>
+              <!-- Karaoke Vocal Cancellation Switch -->
+              <button
+                class="glass-pill px-3 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer active:scale-95"
+                :class="karaokeEnabled ? 'bg-pink-500/20 border-pink-500/40 text-pink-200 shadow-[0_0_12px_rgba(236,72,153,0.3)]' : 'text-slate-400 hover:text-white'"
+                title="Toggle Real-Time Vocal Cancellation"
+                @click="toggleKaraoke"
+              >
+                <UiIcon name="mic" :size="13" />
+                <span>Karaoke</span>
+                <span v-if="karaokeEnabled" class="text-[10px] font-mono tabular-nums text-pink-300 bg-pink-500/30 px-1 py-0.2 rounded">{{ karaokeLevel }}%</span>
+              </button>
+            </div>
 
-            <div class="volume-slider-group">
-              <span class="vol-icon">🔊</span>
+            <!-- Volume Scrubber -->
+            <div class="flex items-center gap-2 glass-pill px-3 py-1.5 ml-auto">
+              <UiIcon v-if="volume === 0" name="volume-x" :size="14" class="text-slate-400 shrink-0" />
+              <UiIcon v-else-if="volume < 50" name="volume-1" :size="14" class="text-slate-400 shrink-0" />
+              <UiIcon v-else name="volume-2" :size="14" class="text-slate-400 shrink-0" />
               <input
                 type="range"
                 min="0"
                 max="100"
                 :value="volume"
-                class="volume-range"
+                class="w-20 accent-indigo-500 cursor-pointer"
                 @input="(e) => updateVolume(Number((e.target as HTMLInputElement).value))"
               />
-              <span class="vol-num">{{ volume }}%</span>
+              <span class="text-xs font-mono tabular-nums text-slate-300 w-8 text-right">{{ volume }}%</span>
             </div>
           </div>
         </div>
 
-        <!-- Host Settings & Output Switcher -->
-        <div class="settings-card glass-panel">
-          <div class="setting-row">
-            <div class="setting-info">
-              <h4>Auto-Radio DJ</h4>
-              <p>Keep the vibe alive with smart recommendations when queue empties</p>
+        <!-- Studio Controls Card -->
+        <div class="glass-panel p-5 rounded-3xl flex flex-col gap-4 shadow-xl border-white/10">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xs font-extrabold text-white tracking-wide uppercase">
+              <UiIcon name="sliders" :size="14" class="text-indigo-400" />
+              <span>Studio Controls</span>
             </div>
-            <button class="toggle-btn" :class="{ active: autoDjEnabled }" @click="toggleAutoDj">
-              {{ autoDjEnabled ? "ON" : "OFF" }}
-            </button>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-amber-300/90 glass-pill px-2 py-0.5 bg-amber-500/10 border-amber-500/30">Host Exclusive</span>
           </div>
 
-          <div class="setting-row karaoke-setting-row">
-            <div class="setting-info">
-              <h4>🎤 Karaoke Mode (Vocal Reducer)</h4>
-              <p>Real-time center vocal phase cancellation with low-frequency crossover</p>
+          <!-- Auto-Radio DJ -->
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-xs font-bold text-white">Auto-Radio DJ</span>
+              <span class="text-[11px] text-slate-400">Autoplays similar tracks when queue is clear</span>
             </div>
-            <div class="karaoke-controls-wrap">
-              <div v-if="karaokeEnabled" class="karaoke-slider-box">
-                <span class="karaoke-slider-label">Vocal Cut: <strong>{{ karaokeLevel }}%</strong></span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  :value="karaokeLevel"
-                  class="karaoke-range-slider"
-                  @input="(e) => setKaraokeLevel(Number((e.target as HTMLInputElement).value))"
-                />
+            <div
+              class="spring-switch cursor-pointer"
+              :class="{ active: autoDjEnabled }"
+              role="switch"
+              :aria-checked="autoDjEnabled"
+              @click="toggleAutoDj"
+            >
+              <div class="spring-switch-thumb"></div>
+            </div>
+          </div>
+
+          <!-- Karaoke DSP Mode -->
+          <div class="flex flex-col gap-2 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-bold text-white">Karaoke DSP (Vocal Reducer)</span>
+                <span class="text-[11px] text-slate-400">Real-time center cancellation with punchy bass</span>
               </div>
-              <button class="toggle-btn" :class="{ active: karaokeEnabled }" @click="toggleKaraoke">
-                {{ karaokeEnabled ? "ON" : "OFF" }}
-              </button>
+              <div
+                class="spring-switch cursor-pointer"
+                :class="{ active: karaokeEnabled }"
+                role="switch"
+                :aria-checked="karaokeEnabled"
+                @click="toggleKaraoke"
+              >
+                <div class="spring-switch-thumb"></div>
+              </div>
+            </div>
+            <div v-if="karaokeEnabled" class="pt-2 border-t border-white/10 flex items-center justify-between gap-3">
+              <span class="text-[11px] text-pink-300 font-semibold">Vocal Cut: <strong class="tabular-nums">{{ karaokeLevel }}%</strong></span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                :value="karaokeLevel"
+                class="flex-1 max-w-[180px] accent-pink-500 cursor-pointer"
+                @input="(e) => setKaraokeLevel(Number((e.target as HTMLInputElement).value))"
+              />
             </div>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-info">
-              <h4>Audio Output Mode</h4>
-              <p>Stream directly in this browser window to office speaker</p>
+          <!-- Crossfade & Transitions -->
+          <div class="flex flex-col gap-2 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-col gap-0.5">
+                <span class="text-xs font-bold text-white">Crossfade & Seamless Play</span>
+                <span class="text-[11px] text-slate-400">Smooth play/pause fade & overlapping track transitions</span>
+              </div>
+              <div
+                class="spring-switch cursor-pointer"
+                :class="{ active: crossfadeEnabled }"
+                role="switch"
+                :aria-checked="crossfadeEnabled"
+                @click="toggleCrossfade"
+              >
+                <div class="spring-switch-thumb"></div>
+              </div>
             </div>
-            <div class="mode-pills">
+            <div v-if="crossfadeEnabled" class="pt-2 border-t border-white/10 flex items-center justify-between gap-3">
+              <span class="text-[11px] text-indigo-300 font-semibold">Overlap: <strong class="tabular-nums">{{ crossfadeDuration }}s</strong></span>
+              <input
+                type="range"
+                min="2"
+                max="8"
+                step="1"
+                :value="crossfadeDuration"
+                class="flex-1 max-w-[180px] accent-indigo-500 cursor-pointer"
+                @input="(e) => setCrossfadeDuration(Number((e.target as HTMLInputElement).value))"
+              />
+            </div>
+          </div>
+
+          <!-- Audio Output Destination -->
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/5">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-xs font-bold text-white">Audio Destination</span>
+              <span class="text-[11px] text-slate-400">Route audio to browser or native driver</span>
+            </div>
+            <div class="glass-pill p-0.5 flex items-center text-xs">
               <button
-                class="mode-btn"
-                :class="{ active: outputMode === 'browser' }"
+                class="px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer"
+                :class="outputMode === 'browser' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'"
                 @click="setOutputMode('browser')"
               >
-                Web Browser
+                Browser
               </button>
               <button
-                class="mode-btn"
-                :class="{ active: outputMode === 'native' }"
+                class="px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer"
+                :class="outputMode === 'native' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'"
                 @click="setOutputMode('native')"
               >
-                Native Host
+                Native
               </button>
             </div>
           </div>
         </div>
 
-        <!-- QR Code Share Card -->
+        <!-- QR Share Panel -->
         <QrPanel v-if="clientUrl" :url="clientUrl" />
       </section>
 
-      <!-- Right Column: Live Queue & History -->
-      <section class="queue-column">
-        <div class="queue-header">
-          <h3>Up Next ({{ queue.length }})</h3>
-          <span class="hint">Democratic voting order</span>
-        </div>
+      <!-- RIGHT STAGE: Multi-Tab Studio Center -->
+      <section class="lg:col-span-7 xl:col-span-8 flex flex-col gap-4 min-w-0">
+        <!-- Tactile Stage Tab Navigation Bar -->
+        <nav class="glass-panel p-1.5 rounded-2xl flex items-center justify-between gap-1 shadow-lg bg-black/40 border-white/10 backdrop-blur-2xl">
+          <!-- Queue Tab -->
+          <button
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
+            :class="activeTab === 'queue' ? 'bg-white/15 text-white font-extrabold shadow-[0_0_16px_rgba(255,255,255,0.15)] border border-white/15' : 'text-slate-400 hover:text-slate-200 font-semibold'"
+            @click="activeTab = 'queue'"
+          >
+            <UiIcon name="list-music" :size="16" />
+            <span>Up Next</span>
+            <span
+              v-if="queue.length > 0"
+              class="tabular-nums text-xs px-2 py-0.5 rounded-full font-mono ml-0.5"
+              :class="activeTab === 'queue' ? 'bg-indigo-500/40 text-indigo-200' : 'bg-white/10 text-slate-300'"
+            >
+              {{ queue.length }}
+            </span>
+          </button>
 
-        <div v-if="queue.length === 0" class="empty-queue-box glass-panel">
-          <span class="empty-icon">🎧</span>
-          <h4>No songs in queue</h4>
-          <p>Coworkers can scan the QR code to add their favorite tracks.</p>
-          <button class="btn-secondary" @click="isSearchOpen = true">Add a track now</button>
-        </div>
+          <!-- Catalog & Discovery Tab -->
+          <button
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
+            :class="activeTab === 'catalog' ? 'bg-indigo-600 text-white font-extrabold shadow-[0_0_20px_rgba(99,102,241,0.45)] border border-indigo-400/40' : 'text-slate-400 hover:text-slate-200 font-semibold'"
+            @click="activeTab = 'catalog'"
+          >
+            <UiIcon name="sparkles" :size="15" />
+            <span>Catalog & Discovery</span>
+          </button>
 
-        <transition-group v-else name="list" tag="div" class="queue-list">
-          <QueueCard
-            v-for="item in queue"
-            :key="item.queueId"
-            :track="item"
-            :isAdmin="true"
-            :userRole="'host'"
-            :currentClientId="currentClientId"
-            @upvote="onUpvote"
-            @removeVote="onRemoveVote"
-            @removeTrack="removeTrack"
-          />
-        </transition-group>
+          <!-- Live Lyrics & Karaoke Tab -->
+          <button
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
+            :class="[
+              activeTab === 'lyrics'
+                ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white font-extrabold shadow-[0_0_20px_rgba(236,72,153,0.45)] border border-pink-400/40'
+                : 'text-slate-400 hover:text-slate-200 font-semibold',
+              karaokeEnabled && activeTab !== 'lyrics' ? 'text-pink-300' : ''
+            ]"
+            @click="activeTab = 'lyrics'"
+          >
+            <UiIcon name="mic" :size="15" />
+            <span>Live Lyrics</span>
+            <span
+              v-if="karaokeEnabled"
+              class="w-2 h-2 rounded-full bg-pink-400 animate-pulse ml-0.5"
+            ></span>
+          </button>
+        </nav>
 
-        <!-- History -->
-        <div v-if="history.length > 0" class="history-section">
-          <h3>Recently Played</h3>
-          <div class="history-list">
-            <div v-for="item in history.slice(0, 5)" :key="item.queueId" class="history-item glass-panel">
-              <img v-if="item.thumbnail" :src="item.thumbnail" class="history-thumb" alt="" />
-              <div class="history-info">
-                <span class="history-title">{{ item.title }}</span>
-                <span class="history-artist">{{ item.artist }}</span>
+        <!-- Stage View Animated Transitions -->
+        <transition name="page-fade" mode="out-in">
+          <!-- 1. QUEUE STAGE -->
+          <div v-if="activeTab === 'queue'" key="queue" class="flex flex-col gap-5">
+            <div class="flex items-center justify-between px-1">
+              <div class="flex items-center gap-2">
+                <div class="text-indigo-400">
+                  <UiIcon name="list-music" :size="18" />
+                </div>
+                <h3 class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-2">
+                  <span>Democratic Queue</span>
+                  <span class="text-xs font-mono tabular-nums px-2 py-0.5 rounded-full bg-white/10 text-indigo-200">
+                    {{ queue.length }}
+                  </span>
+                </h3>
               </div>
-              <span class="history-by glass-pill">👤 {{ item.requestedBy }}</span>
+              <span class="text-xs text-slate-400 font-medium">Sorted by democratic votes</span>
+            </div>
+
+            <!-- Empty State Vibe Station -->
+            <div v-if="queue.length === 0" class="empty-queue-box glass-panel p-8 sm:p-10 rounded-3xl flex flex-col items-center justify-center text-center gap-4 border-dashed border-white/15">
+              <div class="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 shadow-inner">
+                <UiIcon name="disc" :size="36" strokeWidth="1.2" class="empty-disc-icon" />
+              </div>
+              <div class="flex flex-col gap-1 max-w-md">
+                <h4 class="text-base sm:text-lg font-bold text-white tracking-tight">Queue is Clear</h4>
+                <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  The room is quiet. Coworkers can scan the QR code to vote, or explore the catalog to queue a track:
+                </p>
+              </div>
+
+              <!-- Quick Pick Chips -->
+              <div class="flex flex-wrap items-center justify-center gap-2 max-w-lg my-1">
+                <button
+                  v-for="vibe in quickPickVibes"
+                  :key="vibe.label"
+                  class="glass-pill px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:bg-indigo-500/20 hover:border-indigo-400/40 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                  @click="triggerQuickPick(vibe.query)"
+                >
+                  <UiIcon name="sparkles" :size="11" class="text-indigo-400" />
+                  <span>{{ vibe.label }}</span>
+                </button>
+              </div>
+
+              <div class="flex items-center gap-3 pt-2">
+                <button class="btn-primary text-xs px-4 py-2 cursor-pointer shadow-lg" @click="activeTab = 'catalog'">
+                  <UiIcon name="sparkles" :size="14" />
+                  <span>Open Catalog & Library</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Queue Cards List -->
+            <transition-group v-else name="list" tag="div" class="flex flex-col gap-2.5">
+              <QueueCard
+                v-for="item in queue"
+                :key="item.queueId"
+                :track="item"
+                :isAdmin="true"
+                :userRole="'host'"
+                :currentClientId="currentClientId"
+                @upvote="onUpvote"
+                @removeVote="onRemoveVote"
+                @removeTrack="removeTrack"
+              />
+            </transition-group>
+
+            <!-- Recently Played History Shelf -->
+            <div v-if="history.length > 0" class="glass-panel p-5 rounded-3xl flex flex-col gap-3.5 shadow-lg border-white/10">
+              <div class="flex items-center justify-between px-1">
+                <div class="flex items-center gap-2">
+                  <UiIcon name="music" :size="15" class="text-indigo-400" />
+                  <h3 class="text-xs sm:text-sm font-extrabold text-white">Recently Played in Room</h3>
+                </div>
+                <span class="text-xs font-mono text-slate-400 tabular-nums">{{ history.length }} tracks</span>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div
+                  v-for="item in history.slice(0, 6)"
+                  :key="item.queueId"
+                  class="glass-panel p-2.5 rounded-2xl flex items-center gap-3 hover:bg-white/[0.04] transition-all"
+                >
+                  <div class="w-10 h-10 rounded-xl overflow-hidden bg-black/60 shrink-0 border border-white/10">
+                    <img v-if="item.thumbnail" :src="item.thumbnail" class="w-full h-full object-cover" alt="" />
+                    <div v-else class="w-full h-full flex items-center justify-center text-slate-500">
+                      <UiIcon name="music" :size="14" />
+                    </div>
+                  </div>
+                  <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <span class="text-xs font-bold text-white truncate" :title="item.title">{{ item.title }}</span>
+                    <span class="text-[11px] text-slate-400 truncate">{{ item.artist }}</span>
+                  </div>
+                  <span class="glass-pill px-2 py-0.5 text-[10px] text-slate-400 shrink-0 max-w-[80px] truncate">
+                    {{ item.requestedBy }}
+                  </span>
+                  <button
+                    class="glass-pill w-7 h-7 flex items-center justify-center text-indigo-300 hover:text-white hover:bg-indigo-500/20 active:scale-90 transition-all cursor-pointer shrink-0"
+                    title="Re-request track"
+                    @click="reRequestTrack(item.title, item.artist)"
+                  >
+                    <UiIcon name="plus" :size="12" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+
+          <!-- 2. CATALOG & DISCOVERY STAGE -->
+          <div v-else-if="activeTab === 'catalog'" key="catalog">
+            <CatalogView
+              :nickname="hostNickname"
+              :nowPlaying="nowPlaying"
+              :initialQuery="prefillCatalogQuery"
+              @requestTrack="() => {}"
+            />
+          </div>
+
+          <!-- 3. LIVE LYRICS & KARAOKE STAGE -->
+          <div v-else-if="activeTab === 'lyrics'" key="lyrics" class="h-[calc(100vh-140px)] min-h-[580px] flex flex-col">
+            <LyricsView
+              class="h-full flex-1 min-h-0"
+              :track="nowPlaying"
+              :currentTime="currentTime"
+              :duration="duration"
+              :isPlaying="isPlaying"
+              :canSeek="true"
+              :karaokeEnabled="karaokeEnabled"
+              :karaokeLevel="karaokeLevel"
+              @seek="seekTo"
+              @back="activeTab = 'queue'"
+            />
+          </div>
+        </transition>
       </section>
     </main>
-
-    <!-- Search Modal -->
-    <SearchModal
-      :isOpen="isSearchOpen"
-      :nickname="hostNickname"
-      @close="isSearchOpen = false"
-    />
 
     <!-- Member Management Drawer -->
     <MemberDrawer
@@ -424,668 +737,52 @@ function formatDuration(sec: number): string {
       @setRole="onSetRole"
       @setDjPasscode="onSetDjPasscode"
     />
-
-    <!-- Synced Lyrics Modal -->
-    <LyricsModal
-      :isOpen="isLyricsOpen"
-      :track="nowPlaying"
-      :currentTime="currentTime"
-      :canSeek="true"
-      @close="isLyricsOpen = false"
-      @seek="onLyricsSeek"
-    />
   </div>
 </template>
 
 <style scoped>
-.host-page {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.top-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.5rem;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-}
-
-.logo-icon {
-  font-size: 1.8rem;
-}
-
-.brand-text h1 {
-  font-size: 1.15rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.role-tag {
-  font-size: 0.72rem;
-  color: var(--accent-primary);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.status-group {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.status-indicator .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.status-indicator.connected .dot {
-  background: var(--color-success);
-  box-shadow: 0 0 8px var(--color-success);
-}
-
-.listeners-pill {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.host-grid {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 1.5rem;
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .host-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.player-column {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.now-playing-card {
-  position: relative;
-  overflow: hidden;
-  padding: 1.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
+/* Ambient Dynamic Backlight Projection */
 .ambient-glow {
   position: absolute;
-  inset: -20px;
+  inset: -25px;
   background-size: cover;
   background-position: center;
-  filter: blur(50px) brightness(0.25);
-  opacity: 0.7;
-  z-index: 0;
+  filter: blur(55px) saturate(1.4);
   pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.8s ease;
 }
 
-.card-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 1.25rem;
-  align-items: center;
+/* Vinyl Disc Tilt / Spin Interaction */
+.vinyl-wrapper {
+  perspective: 600px;
 }
 
-.cover-wrapper {
-  position: relative;
-  width: 110px;
-  height: 110px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: #000;
-  box-shadow: var(--shadow-md);
-  flex-shrink: 0;
+.vinyl-wrapper.is-playing .vinyl-art {
+  box-shadow: 0 12px 28px -4px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-color: rgba(99, 102, 241, 0.35);
+  animation: vinylFloat 4s ease-in-out infinite;
 }
 
-.cover-art {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.cover-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2.5rem;
-}
-
-.provider-badge {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-}
-
-.track-details {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.dj-pill {
-  align-self: flex-start;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.72rem;
-  color: var(--accent-primary);
-  font-weight: 600;
-  margin-bottom: 0.2rem;
-}
-
-.title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: -0.02em;
-}
-
-.artist {
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.visualizer-wrapper {
-  margin-top: 0.4rem;
-}
-
-.progress-section {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.time-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  font-family: "JetBrains Mono", monospace;
-  color: var(--text-muted);
-}
-
-.progress-bar-bg {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: var(--accent-gradient);
-  transition: width 0.3s linear;
-}
-
-.transport-bar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.play-btn {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: #fff;
-  color: #000;
-  font-size: 1.2rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
-}
-
-.play-btn:hover {
-  transform: scale(1.05);
-}
-
-.play-btn:active {
-  transform: scale(0.95);
-}
-
-.skip-btn {
-  padding: 0.65rem 1.1rem;
-}
-
-.volume-slider-group {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.vol-icon {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.volume-range {
-  width: 100px;
-  accent-color: var(--accent-primary);
-}
-
-.vol-num {
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  min-width: 32px;
-}
-
-.settings-card {
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.setting-info h4 {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.setting-info p {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.toggle-btn {
-  padding: 0.35rem 0.9rem;
-  border-radius: var(--radius-full);
-  font-size: 0.78rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-}
-
-.toggle-btn.active {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.4);
-  color: var(--color-success);
-}
-
-.mode-pills {
-  display: flex;
-  gap: 0.3rem;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0.25rem;
-  border-radius: var(--radius-full);
-}
-
-.mode-btn {
-  padding: 0.35rem 0.75rem;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.mode-btn.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  font-weight: 600;
-}
-
-.queue-column {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.queue-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.queue-header h3 {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.queue-header .hint {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
-.empty-queue-box {
-  padding: 2.5rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 0.6rem;
-}
-
-.empty-icon {
-  font-size: 2.2rem;
-}
-
-.empty-queue-box h4 {
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.empty-queue-box p {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  max-width: 280px;
-}
-
-.queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.history-section {
-  margin-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.history-section h3 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.history-thumb {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
-.history-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-title {
-  font-size: 0.82rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-artist {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-by {
-  font-size: 0.68rem;
-  padding: 0.15rem 0.45rem;
-  color: var(--text-muted);
-}
-
-/* ========================================================
-   🎤 Emil Kowalski-grade Real-Time Karaoke UI
-======================================================== */
-
-.karaoke-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.65rem 1rem;
-  border-radius: var(--radius-full);
-  font-size: 0.85rem;
-  font-weight: 600;
-  transition: all var(--transition-smooth);
-}
-
-.karaoke-btn.active {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.22) 0%, rgba(139, 92, 246, 0.28) 100%);
-  border: 1px solid rgba(236, 72, 153, 0.5);
-  color: #fff;
-  box-shadow: 0 0 20px -3px rgba(236, 72, 153, 0.35);
-}
-
-.karaoke-btn.active:hover {
-  transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 0 24px -2px rgba(236, 72, 153, 0.5);
-}
-
-.karaoke-pill-tag {
-  background: rgba(236, 72, 153, 0.3);
-  padding: 0.1rem 0.45rem;
-  border-radius: var(--radius-full);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: #fbcfe8;
-}
-
-/* Quick-Access Karaoke Sing Banner */
-.karaoke-banner {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1.15rem;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(99, 102, 241, 0.15) 100%);
-  border: 1px solid rgba(236, 72, 153, 0.25);
-  box-shadow: 0 8px 30px -8px rgba(236, 72, 153, 0.2);
-  backdrop-filter: blur(16px);
-  margin-top: 0.25rem;
-}
-
-.karaoke-banner-left {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.karaoke-pulse-icon {
-  font-size: 1.4rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: micPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes micPulse {
+@keyframes vinylFloat {
   0%, 100% {
-    transform: scale(1);
-    filter: drop-shadow(0 0 4px rgba(236, 72, 153, 0.4));
+    transform: translateY(0) rotate(0deg);
   }
   50% {
-    transform: scale(1.14);
-    filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.8));
+    transform: translateY(-2px) rotate(1deg);
   }
 }
 
-.karaoke-banner-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.empty-disc-icon {
+  animation: rotateDisc 22s linear infinite;
 }
 
-.karaoke-banner-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.banner-heading {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.01em;
-}
-
-.karaoke-cut-badge {
-  font-size: 0.68rem;
-  font-weight: 700;
-  background: rgba(236, 72, 153, 0.25);
-  border: 1px solid rgba(236, 72, 153, 0.4);
-  color: #f472b6;
-  padding: 0.1rem 0.4rem;
-  border-radius: var(--radius-full);
-}
-
-.karaoke-banner-desc {
-  font-size: 0.74rem;
-  color: var(--text-secondary);
-}
-
-.karaoke-sing-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.5rem 0.95rem;
-  border-radius: var(--radius-full);
-  font-size: 0.8rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(236, 72, 153, 0.35);
-  cursor: pointer;
-  transition: all var(--transition-bounce);
-  white-space: nowrap;
-}
-
-.karaoke-sing-btn:hover {
-  transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
-}
-
-.karaoke-sing-btn:active {
-  transform: scale(0.96);
-}
-
-.arrow-up-right {
-  font-size: 0.9rem;
-  transition: transform var(--transition-fast);
-}
-
-.karaoke-sing-btn:hover .arrow-up-right {
-  transform: translate(2px, -2px);
-}
-
-/* Banner Spring Pop Transition */
-.karaoke-banner-pop-enter-active,
-.karaoke-banner-pop-leave-active {
-  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.karaoke-banner-pop-enter-from,
-.karaoke-banner-pop-leave-to {
-  opacity: 0;
-  transform: translateY(-8px) scale(0.96);
-}
-
-/* Host Settings Karaoke Row */
-.karaoke-setting-row {
-  align-items: center;
-}
-
-.karaoke-controls-wrap {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-}
-
-.karaoke-slider-box {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0.35rem 0.85rem;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
-}
-
-.karaoke-slider-label {
-  font-size: 0.74rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.karaoke-slider-label strong {
-  color: #f472b6;
-}
-
-.karaoke-range-slider {
-  width: 90px;
-  accent-color: #ec4899;
-  cursor: pointer;
+@keyframes rotateDisc {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

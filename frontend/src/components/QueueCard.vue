@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { MemberRole, QueueTrack } from "../shared/types.ts";
+import { useFavorites } from "../shared/useFavorites.ts";
+import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
   track: QueueTrack;
@@ -14,6 +16,8 @@ const emit = defineEmits<{
   (e: "removeVote", queueId: string): void;
   (e: "removeTrack", queueId: string): void;
 }>();
+
+const { isFavorite, toggleFavorite } = useFavorites();
 
 const hasVoted = computed(() => {
   return (
@@ -36,7 +40,7 @@ const votersTooltip = computed(() => {
     return `${props.track.votes} votes`;
   }
   const voterList = props.track.voters
-    .map((v) => `${v.nickname} (${v.role === "dj" ? "🎧" : v.role === "vip" ? "⭐" : "👤"}+${v.weight})`)
+    .map((v) => `${v.nickname} (${v.role.toUpperCase()} +${v.weight})`)
     .join(", ");
   return `${props.track.votes} votes: ${voterList}`;
 });
@@ -55,6 +59,21 @@ function formatDuration(sec: number): string {
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
+
+const displayArtist = computed(() => {
+  const a = props.track.artist;
+  if (!a || a === "YouTube Music" || /^\d+:\d{2}(:\d{2})?$/.test(a.trim())) {
+    const t = props.track.title || "";
+    if (t.includes(" - ")) {
+      const parts = t.split(" - ");
+      if (parts.length >= 2 && parts[0].trim().length > 1) {
+        return parts[0].trim();
+      }
+    }
+    return "";
+  }
+  return a;
+});
 </script>
 
 <template>
@@ -67,7 +86,9 @@ function formatDuration(sec: number): string {
   >
     <div class="thumb-wrapper">
       <img v-if="track.thumbnail" :src="track.thumbnail" :alt="track.title" class="thumb" loading="lazy" />
-      <div v-else class="thumb-placeholder">🎵</div>
+      <div v-else class="thumb-placeholder">
+        <UiIcon name="music" :size="20" />
+      </div>
       <span class="provider-tag" :class="`badge-${track.provider}`">{{ track.provider.toUpperCase() }}</span>
     </div>
 
@@ -75,44 +96,53 @@ function formatDuration(sec: number): string {
       <div class="title-row">
         <h3 class="track-title" :title="track.title">{{ track.title }}</h3>
       </div>
-      <p class="track-artist">{{ track.artist }}</p>
+      <p v-if="displayArtist" class="track-artist">{{ displayArtist }}</p>
       
       <div class="meta-row">
         <span class="requester-pill glass-pill">
-          <span class="user-icon">👤</span>
+          <UiIcon name="user" :size="11" />
           <span class="requester-name">{{ track.requestedBy }}</span>
         </span>
-        <span v-if="track.duration" class="duration">{{ formatDuration(track.duration) }}</span>
-        <span v-if="track.fallbackCount" class="fallback-pill" title="Alternative match selected">⚡ Fallback</span>
+        <span v-if="track.duration" class="duration tabular-nums">{{ formatDuration(track.duration) }}</span>
+        <span v-if="track.fallbackCount" class="fallback-pill" title="Alternative match selected">
+          <UiIcon name="sparkles" :size="10" /> Fallback
+        </span>
         
         <!-- Voter role tags if boosted -->
         <span v-if="hasVipOrDjVote" class="boosted-tag" :title="votersTooltip">
-          ⚡ Boosted
+          <UiIcon name="sparkles" :size="10" /> Boosted
         </span>
       </div>
     </div>
 
     <div class="actions">
       <button
+        class="star-btn"
+        :class="{ active: isFavorite(track.id) }"
+        :title="isFavorite(track.id) ? 'Remove from Favorites' : 'Save to Favorites'"
+        @click="toggleFavorite(track)"
+      >
+        <UiIcon v-if="isFavorite(track.id)" name="star-filled" :size="14" />
+        <UiIcon v-else name="star" :size="14" />
+      </button>
+
+      <button
         class="vote-btn"
         :class="{ voted: hasVoted }"
         :title="votersTooltip"
         @click="toggleVote"
       >
-        <span class="vote-icon">▲</span>
-        <span class="vote-count">{{ track.votes }}</span>
+        <UiIcon name="arrow-up" :size="13" class="vote-icon" />
+        <span class="vote-count tabular-nums">{{ track.votes }}</span>
       </button>
 
       <button
         v-if="canRemove"
         class="btn-icon remove-btn"
-        title="Remove from queue (DJ / Host Privilege)"
+        title="Remove from queue (Host / DJ)"
         @click="emit('removeTrack', track.queueId)"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
+        <UiIcon name="trash-2" :size="13" />
       </button>
     </div>
   </div>
@@ -122,30 +152,35 @@ function formatDuration(sec: number): string {
 .queue-card {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.85rem 1rem;
+  gap: 0.9rem;
+  padding: 0.75rem 0.95rem;
   border-radius: var(--radius-md);
-  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  background: rgba(14, 17, 26, 0.65);
+  border: 1px solid var(--border-subtle);
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .queue-card:hover {
-  background: var(--bg-surface-hover);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(22, 26, 38, 0.85);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
 }
 
 .queue-card.is-playing {
   border-color: var(--border-focus);
   background: rgba(99, 102, 241, 0.08);
+  box-shadow: 0 0 24px -6px rgba(99, 102, 241, 0.3);
 }
 
 .thumb-wrapper {
   position: relative;
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .thumb {
@@ -160,18 +195,20 @@ function formatDuration(sec: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.25rem;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .provider-tag {
   position: absolute;
-  bottom: 3px;
-  right: 3px;
-  font-size: 0.55rem;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.52rem;
+  font-family: var(--font-mono);
   font-weight: 800;
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
+  padding: 0.08rem 0.28rem;
+  border-radius: 3px;
+  line-height: 1;
 }
 
 .info {
@@ -179,7 +216,7 @@ function formatDuration(sec: number): string {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
 }
 
 .title-row {
@@ -189,17 +226,17 @@ function formatDuration(sec: number): string {
 }
 
 .track-title {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 .track-artist {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -209,49 +246,61 @@ function formatDuration(sec: number): string {
 .meta-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.2rem;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
 }
 
 .requester-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.72rem;
+  gap: 0.25rem;
+  padding: 0.12rem 0.5rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
 }
 
-.user-icon {
-  font-size: 0.65rem;
-}
-
 .requester-name {
-  max-width: 130px;
+  max-width: 110px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .duration {
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
 }
 
 .fallback-pill {
-  font-size: 0.68rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.65rem;
   font-weight: 600;
   color: var(--color-warning);
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
   border-radius: var(--radius-full);
-  padding: 0.1rem 0.4rem;
+  padding: 0.08rem 0.4rem;
+}
+
+.boosted-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #c084fc;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: var(--radius-full);
+  padding: 0.08rem 0.4rem;
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   flex-shrink: 0;
 }
 
@@ -260,72 +309,100 @@ function formatDuration(sec: number): string {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
-  transition: all var(--transition-fast);
-  padding: 0.2rem;
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  padding: 0.15rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .vote-btn:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.vote-btn:active {
+  transform: scale(0.92) !important;
 }
 
 .vote-icon {
-  font-size: 0.75rem;
   color: var(--text-muted);
-  transition: transform var(--transition-bounce), color var(--transition-fast);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s ease;
 }
 
 .vote-count {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .vote-btn.voted {
-  background: rgba(99, 102, 241, 0.18);
-  border-color: rgba(99, 102, 241, 0.45);
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.5);
   box-shadow: 0 0 16px -2px var(--accent-glow);
 }
 
 .vote-btn.voted .vote-icon {
   color: #818cf8;
-  transform: translateY(-1px) scale(1.15);
+  transform: translateY(-2px);
 }
 
 .vote-btn.voted .vote-count {
   color: #c7d2fe;
 }
 
-.remove-btn {
-  width: 34px;
-  height: 34px;
+.star-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.star-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fbbf24;
+  transform: scale(1.1);
+}
+
+.star-btn.active {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.35);
+  box-shadow: 0 0 12px -2px rgba(251, 191, 36, 0.3);
+}
+
+.remove-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .remove-btn:hover {
   color: var(--color-error);
   background: rgba(244, 63, 94, 0.15);
   border-color: rgba(244, 63, 94, 0.3);
+  transform: scale(1.05);
 }
 
 .queue-card.has-special-vote {
-  border-color: rgba(139, 92, 246, 0.25);
-  background: linear-gradient(90deg, rgba(139, 92, 246, 0.04) 0%, rgba(18, 20, 29, 0.7) 100%);
-}
-
-.boosted-tag {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #c084fc;
-  background: rgba(139, 92, 246, 0.18);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: var(--radius-full);
-  padding: 0.1rem 0.45rem;
+  border-color: rgba(139, 92, 246, 0.3);
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.08) 0%, rgba(14, 17, 26, 0.7) 100%);
 }
 </style>
