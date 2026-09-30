@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = defineProps<{
   analyser: AnalyserNode | null;
@@ -9,7 +9,25 @@ const props = defineProps<{
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let animationFrameId: number | null = null;
 
-function render() {
+// Bar smoothing arrays
+const barCount = 32;
+const smoothedHeights = new Float32Array(barCount);
+
+// Reusable frequency buffer and gradient
+let cachedDataArray: Uint8Array<ArrayBuffer> | null = null;
+let cachedGradient: CanvasGradient | null = null;
+
+function getGradient(ctx: CanvasRenderingContext2D, height: number): CanvasGradient {
+  if (!cachedGradient) {
+    cachedGradient = ctx.createLinearGradient(0, height, 0, 0);
+    cachedGradient.addColorStop(0, "rgba(99, 102, 241, 0.35)");
+    cachedGradient.addColorStop(0.65, "rgba(139, 92, 246, 0.85)");
+    cachedGradient.addColorStop(1, "rgba(217, 70, 239, 1)");
+  }
+  return cachedGradient;
+}
+
+function drawStaticBaseline() {
   const canvas = canvasRef.value;
   if (!canvas) return;
 
@@ -21,64 +39,130 @@ function render() {
 
   ctx.clearRect(0, 0, width, height);
 
-  const barCount = 28;
-  const barWidth = Math.max(2, (width / barCount) - 3);
+  const barGap = 3;
+  const totalGaps = (barCount - 1) * barGap;
+  const barWidth = Math.max(2, (width - totalGaps) / barCount);
+  const baselineHeight = 3;
 
-  if (props.isPlaying && props.analyser) {
-    const bufferLength = props.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    props.analyser.getByteFrequencyData(dataArray);
+  for (let i = 0; i < barCount; i++) {
+    smoothedHeights[i] = baselineHeight;
+    const x = i * (barWidth + barGap);
+    const y = height - baselineHeight;
 
-    for (let i = 0; i < barCount; i++) {
-      const dataIndex = Math.floor((i / barCount) * (bufferLength / 2));
-      const value = dataArray[dataIndex] || 0;
-      const barHeight = Math.max(3, (value / 255) * height * 0.9);
-      const x = i * (barWidth + 3);
-      const y = height - barHeight;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.beginPath();
+    ctx.roundRect(x, y, barWidth, baselineHeight, [2, 2, 0, 0]);
+    ctx.fill();
+  }
+}
 
-      const gradient = ctx.createLinearGradient(0, height, 0, y);
-      gradient.addColorStop(0, "rgba(99, 102, 241, 0.4)");
-      gradient.addColorStop(0.5, "rgba(139, 92, 246, 0.85)");
-      gradient.addColorStop(1, "rgba(217, 70, 239, 1)");
+function render() {
+  if (!props.isPlaying || !props.analyser) {
+    stopAnimation();
+    drawStaticBaseline();
+    return;
+  }
 
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, barHeight, [2, 2, 0, 0]);
-      ctx.fill();
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.clearRect(0, 0, width, height);
+
+  const barGap = 3;
+  const totalGaps = (barCount - 1) * barGap;
+  const barWidth = Math.max(2, (width - totalGaps) / barCount);
+
+  const bufferLength = props.analyser.frequencyBinCount;
+  if (!cachedDataArray || cachedDataArray.length !== bufferLength) {
+    cachedDataArray = new Uint8Array(new ArrayBuffer(bufferLength));
+  }
+  props.analyser.getByteFrequencyData(cachedDataArray);
+
+  const gradient = getGradient(ctx, height);
+
+  for (let i = 0; i < barCount; i++) {
+    // Sample frequency with slightly non-linear curve for punchier bass and audible mids
+    const indexRatio = Math.pow(i / barCount, 1.25);
+    const dataIndex = Math.min(
+      bufferLength - 1,
+      Math.floor(indexRatio * (bufferLength * 0.55))
+    );
+    const rawVal = cachedDataArray[dataIndex] || 0;
+    const targetHeight = Math.max(3, (rawVal / 255) * (height - 2));
+
+    // Smooth decay physics (rapid rise, smooth fall)
+    if (targetHeight > smoothedHeights[i]) {
+      smoothedHeights[i] = targetHeight;
+    } else {
+      smoothedHeights[i] += (targetHeight - smoothedHeights[i]) * 0.22;
     }
-  } else {
-    // Subtle idle wave
-    const time = Date.now() * 0.002;
-    for (let i = 0; i < barCount; i++) {
-      const wave = Math.sin(time + i * 0.3) * 0.5 + 0.5;
-      const barHeight = 4 + wave * 6;
-      const x = i * (barWidth + 3);
-      const y = height - barHeight;
 
-      ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
-      ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, barHeight, [2, 2, 0, 0]);
-      ctx.fill();
+    const barHeight = smoothedHeights[i];
+    const x = i * (barWidth + barGap);
+    const y = height - barHeight;
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(x, y, barWidth, barHeight, [2, 2, 0, 0]);
+    ctx.fill();
+
+    // Specular peak glow cap on energetic peaks
+    if (barHeight > 10) {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      ctx.fillRect(x, y, barWidth, 1.5);
     }
   }
 
   animationFrameId = requestAnimationFrame(render);
 }
 
+function startAnimation() {
+  if (animationFrameId === null && props.isPlaying && props.analyser) {
+    animationFrameId = requestAnimationFrame(render);
+  }
+}
+
+function stopAnimation() {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+}
+
+function updateAnimationState() {
+  if (props.isPlaying && props.analyser) {
+    startAnimation();
+  } else {
+    stopAnimation();
+    drawStaticBaseline();
+  }
+}
+
+watch(
+  [() => props.isPlaying, () => props.analyser],
+  () => {
+    updateAnimationState();
+  }
+);
+
 onMounted(() => {
-  render();
+  updateAnimationState();
 });
 
 onBeforeUnmount(() => {
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-  }
+  stopAnimation();
 });
 </script>
 
 <template>
   <div class="visualizer-container">
-    <canvas ref="canvasRef" width="220" height="42"></canvas>
+    <canvas ref="canvasRef" width="240" height="38"></canvas>
   </div>
 </template>
 
@@ -86,7 +170,9 @@ onBeforeUnmount(() => {
 .visualizer-container {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 8px rgba(99, 102, 241, 0.25));
 }
 
 canvas {

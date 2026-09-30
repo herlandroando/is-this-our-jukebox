@@ -38,8 +38,26 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
   let lastSyncTimestamp = performance.now();
   let cleanups: Array<() => void> = [];
 
+  function startLoop() {
+    if (animFrameId === null && isPlaying.value && track.value) {
+      lastSyncTimestamp = performance.now();
+      animFrameId = requestAnimationFrame(tick);
+    }
+  }
+
+  function stopLoop() {
+    if (animFrameId !== null) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+  }
+
   function tick() {
-    if (isPlaying.value && !isScrubbing.value && track.value) {
+    if (!isPlaying.value || !track.value) {
+      animFrameId = null;
+      return;
+    }
+    if (!isScrubbing.value) {
       const now = performance.now();
       const elapsed = (now - lastSyncTimestamp) / 1000;
       const dur = duration.value;
@@ -100,9 +118,14 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
 
   // Handle visibility changes to re-sync immediately when tab is foregrounded
   function onVisibilityChange() {
-    if (!document.hidden && isPlaying.value) {
+    if (document.hidden) {
+      stopLoop();
+    } else if (isPlaying.value && track.value) {
+      const serverTime = jukeboxClient.currentTime.value || jukeboxClient.state.value?.currentTime || currentTime.value;
+      currentTime.value = serverTime;
+      lastSyncServerTime = serverTime;
       lastSyncTimestamp = performance.now();
-      lastSyncServerTime = currentTime.value;
+      startLoop();
     }
   }
 
@@ -138,14 +161,11 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
     cleanups.push(unsubSeek);
 
     document.addEventListener("visibilitychange", onVisibilityChange);
-    animFrameId = requestAnimationFrame(tick);
+    startLoop();
   });
 
   onBeforeUnmount(() => {
-    if (animFrameId !== null) {
-      cancelAnimationFrame(animFrameId);
-      animFrameId = null;
-    }
+    stopLoop();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     for (const cleanup of cleanups) {
       cleanup();
@@ -157,13 +177,25 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
   watch(
     () => track.value?.id,
     (newId, oldId) => {
-      if (newId !== oldId) {
+      if (oldId !== undefined && newId !== oldId) {
         currentTime.value = 0;
         lastSyncServerTime = 0;
         lastSyncTimestamp = performance.now();
         if (isScrubbing.value) {
           isScrubbing.value = false;
         }
+      } else if (oldId === undefined && newId) {
+        const resumeTime = jukeboxClient.currentTime.value || jukeboxClient.state.value?.currentTime || 0;
+        if (resumeTime > 0) {
+          currentTime.value = resumeTime;
+          lastSyncServerTime = resumeTime;
+          lastSyncTimestamp = performance.now();
+        }
+      }
+      if (track.value && isPlaying.value) {
+        startLoop();
+      } else {
+        stopLoop();
       }
     }
   );
@@ -172,11 +204,12 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
   watch(
     () => isPlaying.value,
     (playing) => {
-      if (playing) {
-        lastSyncServerTime = currentTime.value;
+      lastSyncServerTime = currentTime.value;
+      if (playing && track.value) {
         lastSyncTimestamp = performance.now();
+        startLoop();
       } else {
-        lastSyncServerTime = currentTime.value;
+        stopLoop();
       }
     }
   );
