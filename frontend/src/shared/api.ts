@@ -3,6 +3,9 @@ import type { AudioProvider, LyricsData, SearchResult, TopTrackResult } from "./
 export interface WhoamiResponse {
   lanIp: string;
   port: string;
+  publicUrl?: string | null;
+  tunnelMode?: string;
+  allowRemoteAudio?: boolean;
 }
 
 export async function whoami(): Promise<WhoamiResponse> {

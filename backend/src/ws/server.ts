@@ -21,6 +21,14 @@ function canControlPlayback(ws: ServerWebSocket<WsUserData>, token?: string): bo
 
 export class JukeboxWsHub {
   private sockets = new Set<ServerWebSocket<WsUserData>>();
+  private lastShoutoutTimes = new Map<string, number>();
+  private roomCombo = {
+    count: 0,
+    lastEmoji: "",
+    lastUpdatedAt: 0,
+    contributors: new Set<string>(),
+  };
+  private comboDecayTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Listen to queue store state changes and broadcast to all
@@ -71,6 +79,7 @@ export class JukeboxWsHub {
 
   public handleClose(ws: ServerWebSocket<WsUserData>) {
     this.sockets.delete(ws);
+    this.lastShoutoutTimes.delete(ws.data.id);
     queueStore.removeMember(ws.data.id, this.sockets.size);
   }
 
@@ -121,6 +130,11 @@ export class JukeboxWsHub {
         break;
       }
 
+      case "setListening": {
+        queueStore.updateMemberListening(clientId, !!msg.isListening);
+        break;
+      }
+
       case "setRole": {
         const isAuth = ws.data.isAdmin || (msg.token && verifyAdminToken(msg.token));
         if (!isAuth) {
@@ -149,7 +163,21 @@ export class JukeboxWsHub {
       }
 
       case "claimRole": {
+        const clientKey = `${ws.data.ip}_${clientId}`;
+        const limit = queueStore.checkPasscodeRateLimit(clientKey);
+        if (limit.locked) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: `Too many failed attempts. Please try again in ${limit.retryAfterSeconds}s.`,
+              toastType: "error",
+            })
+          );
+          break;
+        }
+
         if (queueStore.verifyDjPasscode(msg.passcode)) {
+          queueStore.recordPasscodeAttempt(clientKey, true);
           ws.data.role = "dj";
           queueStore.updateMemberRole(clientId, "dj");
           ws.send(
@@ -161,13 +189,25 @@ export class JukeboxWsHub {
           );
           queueStore.toast(`🎧 ${ws.data.nickname} unlocked DJ Controls!`, "success");
         } else {
-          ws.send(
-            JSON.stringify({
-              type: "toast",
-              message: "Invalid DJ passcode. Ask the host for the code!",
-              toastType: "error",
-            })
-          );
+          queueStore.recordPasscodeAttempt(clientKey, false);
+          const updatedLimit = queueStore.checkPasscodeRateLimit(clientKey);
+          if (updatedLimit.locked) {
+            ws.send(
+              JSON.stringify({
+                type: "toast",
+                message: `Too many failed attempts. Locked out for ${updatedLimit.retryAfterSeconds}s.`,
+                toastType: "error",
+              })
+            );
+          } else {
+            ws.send(
+              JSON.stringify({
+                type: "toast",
+                message: "Invalid DJ passcode. Ask the host for the code!",
+                toastType: "error",
+              })
+            );
+          }
         }
         break;
       }
@@ -286,6 +326,98 @@ export class JukeboxWsHub {
         if (canControlPlayback(ws, msg.token)) {
           queueStore.setKaraokeMode(msg.enabled, msg.level);
         }
+        break;
+      }
+
+      case "toggleRemoteAudio": {
+        if (ws.data.isAdmin || (msg.token && verifyAdminToken(msg.token))) {
+          queueStore.setAllowRemoteAudio(!!msg.enabled);
+          queueStore.toast(
+            msg.enabled
+              ? "🎧 Remote headphone streaming enabled"
+              : "⚠️ Remote headphone streaming paused (Bandwidth Saver ON)",
+            msg.enabled ? "info" : "warning"
+          );
+        }
+        break;
+      }
+
+      case "reaction": {
+        const emoji = (msg.emoji || "").trim().slice(0, 8);
+        if (!emoji) break;
+
+        const now = Date.now();
+        // Collaborative Room Combo Stacking:
+        // If tapped within 1800ms of any room reaction, increment combo and track contributors
+        if (now - this.roomCombo.lastUpdatedAt < 1800 && this.roomCombo.count > 0) {
+          this.roomCombo.count++;
+          this.roomCombo.contributors.add(ws.data.id);
+        } else {
+          this.roomCombo.count = 1;
+          this.roomCombo.contributors = new Set([ws.data.id]);
+        }
+
+        this.roomCombo.lastEmoji = emoji;
+        this.roomCombo.lastUpdatedAt = now;
+
+        const currentCombo = this.roomCombo.count;
+        const contributorsCount = this.roomCombo.contributors.size;
+        const isMilestone = currentCombo >= 10 && (currentCombo % 5 === 0);
+
+        // Reset decay timer (1800ms idle window before room combo resets)
+        if (this.comboDecayTimer) clearTimeout(this.comboDecayTimer);
+        this.comboDecayTimer = setTimeout(() => {
+          const lastCombo = this.roomCombo.count;
+          this.roomCombo.count = 0;
+          this.roomCombo.contributors.clear();
+          this.broadcast({
+            type: "comboReset",
+            lastCombo,
+          });
+        }, 1800);
+
+        this.broadcast({
+          type: "reactionBroadcast",
+          id: randomUUID(),
+          clientId: ws.data.id,
+          nickname: ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "Anonymous"),
+          role: ws.data.role,
+          emoji,
+          combo: currentCombo,
+          contributorsCount,
+          isMilestone,
+          timestamp: now,
+        });
+        break;
+      }
+
+      case "shoutout": {
+        const text = (msg.text || "").trim().slice(0, 60);
+        if (!text) break;
+
+        const now = Date.now();
+        const lastTime = this.lastShoutoutTimes.get(ws.data.id) || 0;
+        if (now - lastTime < 2500) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Tunggu sebentar sebelum kirim shoutout lagi ya! ⏳",
+              toastType: "warning",
+            })
+          );
+          break;
+        }
+
+        this.lastShoutoutTimes.set(ws.data.id, now);
+        this.broadcast({
+          type: "shoutoutBroadcast",
+          id: randomUUID(),
+          clientId: ws.data.id,
+          nickname: ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "Anonymous"),
+          role: ws.data.role,
+          text,
+          timestamp: now,
+        });
         break;
       }
     }

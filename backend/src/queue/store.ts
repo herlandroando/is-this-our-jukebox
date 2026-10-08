@@ -49,6 +49,10 @@ export class QueueStore {
   private activeListeners = 0;
   private members: Map<string, MemberInfo> = new Map();
   private djPasscode = "office-dj";
+  private allowRemoteAudio = process.env.ALLOW_REMOTE_AUDIO !== "false";
+  private publicUrl: string | null = process.env.PUBLIC_URL ? process.env.PUBLIC_URL.trim().replace(/\/+$/, "") : null;
+  private tunnelMode: string = process.env.TUNNEL_MODE || (process.env.PUBLIC_URL ? "named" : "off");
+  private failedPasscodeAttempts = new Map<string, { count: number; lockedUntil: number }>();
 
   private stateListeners: Set<StateListener> = new Set();
   private toastListeners: Set<ToastListener> = new Set();
@@ -124,7 +128,60 @@ export class QueueStore {
       activeListeners: this.activeListeners,
       members: Array.from(this.members.values()),
       djPasscodeEnabled: !!this.djPasscode,
+      allowRemoteAudio: this.allowRemoteAudio,
+      publicUrl: this.publicUrl,
+      tunnelMode: this.tunnelMode,
     };
+  }
+
+  public getAllowRemoteAudio(): boolean {
+    return this.allowRemoteAudio;
+  }
+
+  public setAllowRemoteAudio(allowed: boolean) {
+    this.allowRemoteAudio = allowed;
+    this.notify();
+  }
+
+  public getPublicUrl(): string | null {
+    return this.publicUrl;
+  }
+
+  public setPublicUrl(url: string | null, mode?: string) {
+    this.publicUrl = url ? url.trim().replace(/\/+$/, "") : null;
+    if (mode) this.tunnelMode = mode;
+    this.notify();
+  }
+
+  public getTunnelMode(): string {
+    return this.tunnelMode;
+  }
+
+  public checkPasscodeRateLimit(clientKey: string): { locked: boolean; retryAfterSeconds: number } {
+    const record = this.failedPasscodeAttempts.get(clientKey);
+    if (!record) return { locked: false, retryAfterSeconds: 0 };
+    const now = Date.now();
+    if (record.lockedUntil > now) {
+      return { locked: true, retryAfterSeconds: Math.ceil((record.lockedUntil - now) / 1000) };
+    }
+    if (record.lockedUntil > 0 && record.lockedUntil <= now) {
+      this.failedPasscodeAttempts.delete(clientKey);
+    }
+    return { locked: false, retryAfterSeconds: 0 };
+  }
+
+  public recordPasscodeAttempt(clientKey: string, success: boolean) {
+    if (success) {
+      this.failedPasscodeAttempts.delete(clientKey);
+      return;
+    }
+    const now = Date.now();
+    const record = this.failedPasscodeAttempts.get(clientKey) || { count: 0, lockedUntil: 0 };
+    record.count += 1;
+    if (record.count >= 5) {
+      record.lockedUntil = now + 2 * 60 * 1000; // 2 minutes lock
+    }
+    this.failedPasscodeAttempts.set(clientKey, record);
   }
 
   public setActiveListeners(count: number) {
@@ -164,6 +221,14 @@ export class QueueStore {
     const member = this.members.get(clientId);
     if (!member) return false;
     member.nickname = nickname;
+    this.notify();
+    return true;
+  }
+
+  public updateMemberListening(clientId: string, isListening: boolean): boolean {
+    const member = this.members.get(clientId);
+    if (!member) return false;
+    member.isListening = isListening;
     this.notify();
     return true;
   }

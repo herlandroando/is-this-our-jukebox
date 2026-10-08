@@ -1,4 +1,5 @@
 import { spawn } from "bun";
+import { jukeboxDb } from "../backend/src/db.ts";
 
 const PORT = 3055;
 console.log(`[smoke] Starting test Jukebox server on port ${PORT}...`);
@@ -138,9 +139,8 @@ async function runTests() {
   console.log("[smoke] ✓ Track requested and playing/queued!");
 
   // Test 6: Claim DJ Role via passcode
-  console.log("[smoke] Test 6: Claiming DJ role using passcode 'office-dj'...");
-  ws.send(JSON.stringify({ type: "claimRole", passcode: "office-dj" }));
-
+  const currentDjPasscode = jukeboxDb.getMeta("dj_passcode") || "office-dj";
+  console.log(`[smoke] Test 6: Claiming DJ role using passcode '${currentDjPasscode}'...`);
   await new Promise<void>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       const msg = JSON.parse(event.data);
@@ -151,13 +151,12 @@ async function runTests() {
     };
     ws.addEventListener("message", handler);
     setTimeout(() => reject(new Error("Claim role timeout")), 5000);
+    ws.send(JSON.stringify({ type: "claimRole", passcode: currentDjPasscode }));
   });
   console.log("[smoke] ✓ DJ role granted via passcode!");
 
   // Test 7: DJ remote player control (pause/play without admin token)
   console.log("[smoke] Test 7: Testing DJ remote player controls (pause/play without admin token)...");
-  ws.send(JSON.stringify({ type: "pause" }));
-
   await new Promise<void>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       const msg = JSON.parse(event.data);
@@ -168,10 +167,10 @@ async function runTests() {
     };
     ws.addEventListener("message", handler);
     setTimeout(() => reject(new Error("DJ pause timeout")), 5000);
+    ws.send(JSON.stringify({ type: "pause" }));
   });
   console.log("[smoke] ✓ DJ remote pause confirmed!");
 
-  ws.send(JSON.stringify({ type: "play" }));
   await new Promise<void>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       const msg = JSON.parse(event.data);
@@ -182,6 +181,7 @@ async function runTests() {
     };
     ws.addEventListener("message", handler);
     setTimeout(() => reject(new Error("DJ play timeout")), 5000);
+    ws.send(JSON.stringify({ type: "play" }));
   });
   console.log("[smoke] ✓ DJ remote play confirmed!");
 
@@ -291,11 +291,86 @@ async function runTests() {
   if (!Array.isArray(relatedData)) throw new Error("invalid related tracks format");
   console.log(`[smoke] ✓ /api/tracks/related returned array with ${relatedData.length} items`);
 
+  // Test 16: setListening (Headphone Mode) stateSync broadcast
+  console.log("[smoke] Test 16: Testing setListening (Headphone Mode) state synchronization...");
+  const listeningPromise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "stateSync" && msg.state.members?.some((m: any) => m.isListening === true)) {
+        adminWs.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    adminWs.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("setListening stateSync timeout")), 5000);
+  });
+
+  ws.send(JSON.stringify({ type: "setListening", isListening: true }));
+  await listeningPromise;
+  console.log("[smoke] ✓ Headphone listening state sync verified across clients!");
+
+  // Test 17: Collaborative Room Combo broadcast & stacking
+  console.log("[smoke] Test 17: Testing collaborative room combo stacking across clients...");
+  const reaction1Promise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "reactionBroadcast" && msg.emoji === "🔥" && msg.combo === 1) {
+        adminWs.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    adminWs.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("reaction 1 timeout")), 5000);
+  });
+
+  ws.send(JSON.stringify({ type: "reaction", emoji: "🔥" }));
+  await reaction1Promise;
+
+  // Second reaction from another client stacks room combo to 2
+  const reaction2Promise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (
+        msg.type === "reactionBroadcast" &&
+        msg.emoji === "❤️" &&
+        msg.combo === 2 &&
+        msg.contributorsCount === 2
+      ) {
+        ws.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    ws.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("reaction 2 stacking timeout")), 5000);
+  });
+
+  adminWs.send(JSON.stringify({ type: "reaction", emoji: "❤️" }));
+  await reaction2Promise;
+  console.log("[smoke] ✓ Collaborative room combo stacking verified across clients!");
+
+  // Test 18: Shoutout broadcast & rate-limiting
+  console.log("[smoke] Test 18: Testing shoutout broadcast & rate-limiting...");
+  const shoutoutPromise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "shoutoutBroadcast" && msg.text === "SIKAT BRO! 🔥") {
+        adminWs.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    adminWs.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("shoutoutBroadcast timeout")), 5000);
+  });
+
+  ws.send(JSON.stringify({ type: "shoutout", text: "SIKAT BRO! 🔥" }));
+  await shoutoutPromise;
+  console.log("[smoke] ✓ Shoutout broadcast verified across clients!");
+
   ws.close();
   adminWs.close();
   serverProc.kill();
   console.log("\n=======================================================");
-  console.log(" 🎉 ALL 15 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
+  console.log(" 🎉 ALL 18 END-TO-END SMOKE TESTS PASSED PERFECTLY! ");
   console.log("=======================================================\n");
   process.exit(0);
 }

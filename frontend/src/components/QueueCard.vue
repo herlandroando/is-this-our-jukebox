@@ -300,7 +300,7 @@ const displayArtist = computed(() => {
 .actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.55rem;
   flex-shrink: 0;
 }
 
@@ -309,8 +309,8 @@ const displayArtist = computed(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-subtle);
@@ -319,10 +319,12 @@ const displayArtist = computed(() => {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.vote-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .vote-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+  }
 }
 
 .vote-btn:active {
@@ -357,8 +359,8 @@ const displayArtist = computed(() => {
 }
 
 .star-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.04);
@@ -369,10 +371,16 @@ const displayArtist = computed(() => {
   transition: all var(--transition-fast);
 }
 
-.star-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fbbf24;
-  transform: scale(1.1);
+@media (hover: hover) and (pointer: fine) {
+  .star-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fbbf24;
+    transform: scale(1.08);
+  }
+}
+
+.star-btn:active {
+  transform: scale(0.9) !important;
 }
 
 .star-btn.active {
@@ -383,8 +391,8 @@ const displayArtist = computed(() => {
 }
 
 .remove-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.04);
@@ -392,13 +400,20 @@ const displayArtist = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all var(--transition-fast);
 }
 
-.remove-btn:hover {
-  color: var(--color-error);
-  background: rgba(244, 63, 94, 0.15);
-  border-color: rgba(244, 63, 94, 0.3);
-  transform: scale(1.05);
+@media (hover: hover) and (pointer: fine) {
+  .remove-btn:hover {
+    color: var(--color-error);
+    background: rgba(244, 63, 94, 0.15);
+    border-color: rgba(244, 63, 94, 0.3);
+    transform: scale(1.05);
+  }
+}
+
+.remove-btn:active {
+  transform: scale(0.9) !important;
 }
 
 .queue-card.has-special-vote {

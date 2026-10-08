@@ -1,5 +1,13 @@
 import { ref, shallowRef } from "vue";
-import type { ClientMessage, MemberRole, ServerMessage, ServerState, ToastItem } from "./types.ts";
+import type {
+  ClientMessage,
+  MemberRole,
+  ReactionBroadcastItem,
+  ServerMessage,
+  ServerState,
+  ShoutoutBroadcastItem,
+  ToastItem,
+} from "./types.ts";
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "offline";
 
@@ -20,6 +28,9 @@ export class JukeboxClient {
 
   private timeListeners = new Set<(currentTime: number, duration: number) => void>();
   private seekListeners = new Set<(time: number) => void>();
+  private reactionListeners = new Set<(reaction: ReactionBroadcastItem) => void>();
+  private shoutoutListeners = new Set<(shoutout: ShoutoutBroadcastItem) => void>();
+  private comboResetListeners = new Set<(lastCombo: number) => void>();
 
   constructor() {
     // Generate or restore client ID
@@ -173,7 +184,48 @@ export class JukeboxClient {
       case "toast":
         this.addToast(msg.message, msg.toastType);
         break;
+
+      case "reactionBroadcast":
+        for (const cb of this.reactionListeners) {
+          cb(msg);
+        }
+        break;
+
+      case "shoutoutBroadcast":
+        for (const cb of this.shoutoutListeners) {
+          cb(msg);
+        }
+        break;
+
+      case "comboReset":
+        for (const cb of this.comboResetListeners) {
+          cb(msg.lastCombo);
+        }
+        break;
     }
+  }
+
+  public onReaction(cb: (reaction: ReactionBroadcastItem) => void): () => void {
+    this.reactionListeners.add(cb);
+    return () => this.reactionListeners.delete(cb);
+  }
+
+  public onComboReset(cb: (lastCombo: number) => void): () => void {
+    this.comboResetListeners.add(cb);
+    return () => this.comboResetListeners.delete(cb);
+  }
+
+  public onShoutout(cb: (shoutout: ShoutoutBroadcastItem) => void): () => void {
+    this.shoutoutListeners.add(cb);
+    return () => this.shoutoutListeners.delete(cb);
+  }
+
+  public sendReaction(emoji: string, combo = 1) {
+    this.send({ type: "reaction", emoji, combo });
+  }
+
+  public sendShoutout(text: string) {
+    this.send({ type: "shoutout", text });
   }
 
   public onTimeUpdate(cb: (currentTime: number, duration: number) => void): () => void {
@@ -193,6 +245,10 @@ export class JukeboxClient {
   public setNickname(nickname: string) {
     localStorage.setItem("jukebox_nickname", nickname);
     this.send({ type: "setNickname", nickname });
+  }
+
+  public setListening(isListening: boolean) {
+    this.send({ type: "setListening", isListening });
   }
 
   public claimRole(passcode: string) {

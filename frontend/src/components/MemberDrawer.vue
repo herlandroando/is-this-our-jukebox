@@ -138,6 +138,14 @@ onBeforeUnmount(() => {
                 <div class="name-row">
                   <span class="member-name">{{ member.nickname }}</span>
                   <span v-if="member.clientId === currentClientId" class="you-tag">You</span>
+                  <span
+                    v-if="member.isListening"
+                    class="glass-pill px-1.5 py-0.2 text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border-emerald-400/40 flex items-center gap-1"
+                    title="Tuned in with headphones"
+                  >
+                    <UiIcon name="headphones" :size="10" />
+                    <span>Headphones</span>
+                  </span>
                 </div>
                 <div class="ip-row">
                   <span class="ip-text tabular-nums">{{ member.ip }}</span>

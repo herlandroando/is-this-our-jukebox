@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { jukeboxClient } from "../shared/ws.ts";
 import { whoami } from "../shared/api.ts";
@@ -12,6 +12,8 @@ import QrPanel from "../components/QrPanel.vue";
 import MemberDrawer from "../components/MemberDrawer.vue";
 import SeekBar from "../components/SeekBar.vue";
 import UiIcon from "../components/UiIcon.vue";
+import ReactionOverlay from "../components/ReactionOverlay.vue";
+import ReactionDock from "../components/ReactionDock.vue";
 import { usePlaybackProgress } from "../shared/usePlaybackProgress.ts";
 import { useFavorites } from "../shared/useFavorites.ts";
 import type { MemberRole } from "../shared/types.ts";
@@ -32,6 +34,9 @@ const isMemberDrawerOpen = ref(false);
 const prefillCatalogQuery = ref("");
 const analyserNode = ref<AnalyserNode | null>(null);
 const clientUrl = ref("");
+const lanUrl = ref("");
+const publicUrl = ref<string | null>(null);
+const tunnelMode = ref("off");
 const hostNickname = ref("Host DJ 🎧");
 
 const { isFavorite, toggleFavorite } = useFavorites();
@@ -65,6 +70,7 @@ const karaokeLevel = computed(() => state.value?.karaokeLevel ?? 90);
 const outputMode = computed(() => state.value?.outputMode ?? "browser");
 const activeListeners = computed(() => state.value?.activeListeners ?? 1);
 const members = computed(() => state.value?.members ?? []);
+const headphoneCount = computed(() => members.value.filter((m) => m.isListening).length);
 const status = computed(() => jukeboxClient.status.value);
 const currentClientId = computed(() => jukeboxClient.clientId.value);
 
@@ -110,6 +116,8 @@ function onAudioTimeUpdate(cur: number, dur: number) {
   setDirectTime(cur, dur);
 }
 
+const allowRemoteAudio = computed(() => state.value?.allowRemoteAudio ?? true);
+
 onMounted(async () => {
   if (token.value) {
     jukeboxClient.setToken(token.value);
@@ -118,11 +126,40 @@ onMounted(async () => {
 
   try {
     const info = await whoami();
-    clientUrl.value = `http://${info.lanIp}:${info.port}/`;
+    lanUrl.value = `http://${info.lanIp}:${info.port}/`;
+
+    const isCustomOrigin =
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1" &&
+      window.location.hostname !== info.lanIp;
+
+    const detectedPublic = info.publicUrl || (isCustomOrigin ? `${window.location.origin}/` : null);
+    publicUrl.value = detectedPublic;
+    tunnelMode.value = info.tunnelMode || (detectedPublic ? (detectedPublic.includes("trycloudflare.com") ? "quick" : "named") : "off");
+    clientUrl.value = detectedPublic || lanUrl.value;
   } catch (err) {
     console.warn("[host] whoami error:", err);
   }
 });
+
+watch(
+  () => state.value?.publicUrl,
+  (val) => {
+    if (val) {
+      publicUrl.value = val;
+      if (state.value?.tunnelMode) tunnelMode.value = state.value.tunnelMode;
+      clientUrl.value = val;
+    }
+  }
+);
+
+function toggleRemoteAudio() {
+  jukeboxClient.send({
+    type: "toggleRemoteAudio",
+    enabled: !allowRemoteAudio.value,
+    token: token.value,
+  });
+}
 
 function onAnalyserReady(node: AnalyserNode) {
   analyserNode.value = node;
@@ -200,6 +237,19 @@ function reRequestTrack(title: string, artist: string) {
   prefillCatalogQuery.value = `${title} ${artist}`;
   activeTab.value = "catalog";
 }
+
+const isSurging = ref(false);
+const surgeEmoji = ref("🔥");
+let surgeResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onMilestoneSurge(payload: { combo: number; emoji: string }) {
+  isSurging.value = true;
+  surgeEmoji.value = payload.emoji;
+  if (surgeResetTimer) clearTimeout(surgeResetTimer);
+  surgeResetTimer = setTimeout(() => {
+    isSurging.value = false;
+  }, 1800);
+}
 </script>
 
 <template>
@@ -245,6 +295,9 @@ function reRequestTrack(title: string, artist: string) {
           <span>{{ status === 'connected' ? 'Live on Air' : status }}</span>
         </div>
 
+        <!-- Live Room Reactions Dock -->
+        <ReactionDock :compact="true" class="hidden md:flex" />
+
         <!-- Room Member Management Drawer -->
         <button
           class="glass-pill px-3.5 py-1.5 flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white hover:border-white/20 active:scale-95 transition-all cursor-pointer shadow-sm"
@@ -253,6 +306,13 @@ function reRequestTrack(title: string, artist: string) {
         >
           <UiIcon name="users" :size="14" class="text-indigo-400" />
           <span class="tabular-nums">{{ members.length || activeListeners }} in Room</span>
+          <span
+            v-if="headphoneCount > 0"
+            class="text-emerald-400 font-bold flex items-center gap-1 ml-0.5"
+            :title="`${headphoneCount} listening via headphones (~${headphoneCount * 128} kbps upload)`"
+          >
+            • <UiIcon name="headphones" :size="11" /> {{ headphoneCount }} <span class="text-[10px] opacity-80">(~{{ headphoneCount * 128 }}k)</span>
+          </span>
         </button>
       </div>
     </header>
@@ -266,9 +326,10 @@ function reRequestTrack(title: string, artist: string) {
           <!-- Ambient Backlight Projection -->
           <div
             class="ambient-glow"
+            :class="{ 'surge-glow': isSurging }"
             :style="{
               backgroundImage: nowPlaying?.thumbnail ? `url(${nowPlaying.thumbnail})` : 'none',
-              opacity: isPlaying ? '0.45' : '0.2'
+              opacity: isSurging ? '0.8' : (isPlaying ? '0.45' : '0.2')
             }"
           ></div>
 
@@ -533,10 +594,37 @@ function reRequestTrack(title: string, artist: string) {
               </button>
             </div>
           </div>
+
+          <!-- Bandwidth Saver: Remote Headphone Audio Toggle -->
+          <div class="flex items-center justify-between pt-2 border-t border-white/5">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <UiIcon name="headphones" :size="13" class="text-indigo-400" />
+                Remote Headphone Audio
+              </span>
+              <span class="text-[11px] text-slate-400">
+                {{ allowRemoteAudio ? 'Coworkers can stream headphone audio' : 'Paused (Bandwidth Saver ON — saves office upload)' }}
+              </span>
+            </div>
+            <button
+              class="px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer"
+              :class="allowRemoteAudio ? 'bg-emerald-600 text-white shadow-md' : 'bg-amber-600/30 text-amber-300 border border-amber-500/40'"
+              :title="allowRemoteAudio ? 'Pause remote headphone audio to conserve office internet upload' : 'Allow remote coworkers to stream headphone audio'"
+              @click="toggleRemoteAudio"
+            >
+              {{ allowRemoteAudio ? 'Allowed' : 'Paused' }}
+            </button>
+          </div>
         </div>
 
         <!-- QR Share Panel -->
-        <QrPanel v-if="clientUrl" :url="clientUrl" />
+        <QrPanel
+          v-if="clientUrl"
+          :url="clientUrl"
+          :lanUrl="lanUrl"
+          :publicUrl="publicUrl"
+          :tunnelMode="tunnelMode"
+        />
       </section>
 
       <!-- RIGHT STAGE: Multi-Tab Studio Center -->
@@ -737,6 +825,12 @@ function reRequestTrack(title: string, artist: string) {
       @setRole="onSetRole"
       @setDjPasscode="onSetDjPasscode"
     />
+
+    <!-- Immersive Floating Reaction & Shoutout Stream Stage -->
+    <ReactionOverlay
+      positionClass="bottom-6 right-6"
+      @milestone="onMilestoneSurge"
+    />
   </div>
 </template>
 
@@ -750,7 +844,13 @@ function reRequestTrack(title: string, artist: string) {
   filter: blur(55px) saturate(1.4);
   pointer-events: none;
   z-index: 0;
-  transition: opacity 0.8s ease;
+  transition: opacity 0.8s ease, filter 0.8s ease;
+}
+
+.ambient-glow.surge-glow {
+  filter: blur(40px) saturate(2.5) brightness(1.35);
+  box-shadow: 0 0 90px rgba(245, 158, 11, 0.6);
+  transform: scale(1.08);
 }
 
 /* Vinyl Disc Tilt / Spin Interaction */

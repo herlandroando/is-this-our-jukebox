@@ -37,6 +37,8 @@
   Run a single binary on the speaker laptop. It automatically opens the browser to the authenticated **Host Studio** (`/#/host?token=...`) with audio output, tactile visualizers, and playback master controls.
 - 🗳️ **Democratic Voting & Smart Queue**:
   Coworkers can upvote queued tracks. Songs with the highest votes automatically bubble to the top of the playlist.
+- 🎧 **Personal Headphone Mode ("Silent Disco / Tune In")**:
+  Coworkers wearing headphones or earbuds can tap **"Tune In"** directly on their phones or laptops to stream the shared office queue in real-time sync with personal volume control, mobile lock-screen & Bluetooth controls (MediaSession API), and intelligent micro-drift clock correction without disturbing the office speakers.
 - 🚀 **Direct Audio Stream Proxy (No YouTube Iframe / Error 150/101)**:
   Unlike fragile YouTube embeds that Google blocks on office networks, V2 resolves audio through a high-performance **Direct Audio Stream Proxy** (`/api/stream/:id`) feeding a standard HTML5 `<audio>` element with HTTP Range support (`206 Partial Content`) and instant playback failover.
 - 📻 **Smart Auto-Radio DJ**:
@@ -107,10 +109,42 @@ bun run package
 
 ---
 
+## 🌐 Public Internet Access & Cloudflare Tunnel
+
+IsThisOurJukebox V2 natively supports zero-port-forwarding public exposure via **Cloudflare Tunnel**, allowing remote coworkers or mobile phones on cellular data to connect seamlessly:
+
+### 1. Ephemeral Quick Tunnel (Zero Account Needed)
+Generate an instant, temporary public URL without needing a Cloudflare account or domain:
+```bash
+# Automated orchestrator (launches tunnel and registers QR code automatically)
+bun run tunnel:quick
+
+# Or for standalone binary users:
+# Double-click start-with-quick-tunnel.bat
+```
+
+### 2. Named Tunnel with Custom Domain (Production Office Setup)
+Route a permanent branded hostname (e.g. `https://jukebox.yourdomain.com`) directly to your office host machine:
+1. Copy `.env.example` to `.env` and set:
+   ```env
+   TUNNEL_MODE=named
+   PUBLIC_URL=https://jukebox.yourdomain.com
+   ```
+2. In the [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/), create a tunnel named `office-jukebox` and map your public hostname to `http://localhost:3000`.
+3. Start the jukebox with `bun run dev`, `bun run tunnel:named`, or `start-with-named-tunnel.bat`.
+
+### 🛡️ Bandwidth Saver Mode (Host Upload Protection)
+- **Controller Traffic**: Song searches, queuing, upvoting, live lyrics, and reactions use **< 10 MB / hour** total across all users (<0.1% upload).
+- **Personal Audio Streams ("Tune In")**: Each headphone listener downloads ~58 MB/hour.
+- **Upload Protection**: The Host DJ can toggle **"Remote Headphone Audio"** in the Host Studio (or set `ALLOW_REMOTE_AUDIO=false` in `.env`). When disabled, coworkers can still queue, vote, and sing along to the office room speakers without using any of the host's internet upload bandwidth.
+
+---
+
 ## 🔒 Network & Security Note
 
-- **Designed for Private LANs**: This application is optimized to run inside a trusted Local Area Network (office Wi-Fi, home network, or private VPN).
-- **Public Exposure**: If deploying over the public internet, always place it behind a secure reverse proxy (such as Cloudflare Tunnel, Caddy, or Nginx with HTTPS/WSS enabled) and protect access accordingly.
+- **Host Controls Protection**: The Host Studio requires a secret admin token (`/#/host?token=...`). Public QR codes and coworker URLs never expose this secret token.
+- **Brute-Force Rate Limiting**: DJ passcode verification is protected by an in-memory rate limiter (max 5 failed attempts per client/IP per 2 minutes).
+- **Real IP Logging**: The server natively resolves `CF-Connecting-IP` behind Cloudflare Tunnels to track unique remote clients accurately.
 
 ---
 

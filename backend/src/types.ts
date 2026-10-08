@@ -39,6 +39,7 @@ export interface MemberInfo {
   role: MemberRole;
   connectedAt: number;
   isHost: boolean;
+  isListening?: boolean;
 }
 
 export interface LyricLine {
@@ -84,6 +85,9 @@ export interface ServerState {
   activeListeners: number;
   members: MemberInfo[];
   djPasscodeEnabled: boolean;
+  allowRemoteAudio?: boolean;
+  publicUrl?: string | null;
+  tunnelMode?: string;
 }
 
 export type ClientMessage =
@@ -108,7 +112,11 @@ export type ClientMessage =
   | { type: "removeTrack"; queueId: string; token?: string }
   | { type: "toggleAutoDj"; enabled: boolean; token?: string }
   | { type: "setOutputMode"; mode: "browser" | "native"; token?: string }
-  | { type: "setKaraokeMode"; enabled: boolean; level?: number; token?: string };
+  | { type: "setKaraokeMode"; enabled: boolean; level?: number; token?: string }
+  | { type: "toggleRemoteAudio"; enabled: boolean; token?: string }
+  | { type: "setListening"; isListening: boolean }
+  | { type: "reaction"; emoji: string; combo?: number }
+  | { type: "shoutout"; text: string };
 
 export type ServerMessage =
   | { type: "welcome"; isAdmin: boolean; clientId: string; role: MemberRole }
@@ -119,4 +127,29 @@ export type ServerMessage =
   | { type: "nowPlayingUpdated"; nowPlaying: QueueTrack | null; isPlaying: boolean }
   | { type: "historyUpdated"; history: QueueTrack[] }
   | { type: "roleGranted"; role: MemberRole; message: string }
-  | { type: "toast"; message: string; toastType: "info" | "success" | "warning" | "error" };
+  | { type: "toast"; message: string; toastType: "info" | "success" | "warning" | "error" }
+  | {
+      type: "reactionBroadcast";
+      id: string;
+      clientId: string;
+      nickname: string;
+      role: MemberRole;
+      emoji: string;
+      combo: number;
+      contributorsCount: number;
+      isMilestone?: boolean;
+      timestamp: number;
+    }
+  | {
+      type: "comboReset";
+      lastCombo: number;
+    }
+  | {
+      type: "shoutoutBroadcast";
+      id: string;
+      clientId: string;
+      nickname: string;
+      role: MemberRole;
+      text: string;
+      timestamp: number;
+    };

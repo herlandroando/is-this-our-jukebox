@@ -28,10 +28,19 @@ export type IconName =
   | "wifi"
   | "wifi-off"
   | "chevron-right"
+  | "chevron-up"
+  | "chevron-down"
   | "list-music"
   | "disc"
   | "heart"
-  | "user";
+  | "user"
+  | "headphones"
+  | "headphones-off"
+  | "message-square"
+  | "send"
+  | "flame"
+  | "eye"
+  | "eye-off";
 
 const props = withDefaults(
   defineProps<{
@@ -244,6 +253,16 @@ const pixelSize = computed(() => {
       <path d="m9 18 6-6-6-6" />
     </g>
 
+    <!-- chevron-up -->
+    <g v-else-if="name === 'chevron-up'">
+      <path d="m18 15-6-6-6 6" />
+    </g>
+
+    <!-- chevron-down -->
+    <g v-else-if="name === 'chevron-down'">
+      <path d="m6 9 6 6 6-6" />
+    </g>
+
     <!-- list-music -->
     <g v-else-if="name === 'list-music'">
       <path d="M21 15V6" />
@@ -268,6 +287,50 @@ const pixelSize = computed(() => {
     <g v-else-if="name === 'user'">
       <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </g>
+
+    <!-- headphones -->
+    <g v-else-if="name === 'headphones'">
+      <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+    </g>
+
+    <!-- headphones-off -->
+    <g v-else-if="name === 'headphones-off'">
+      <path d="M8.5 8.5A6 6 0 0 1 18 14v1" />
+      <path d="M3 14v3a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3" />
+      <path d="M21 14h-3a2 2 0 0 0-1.66 1" />
+      <path d="M21 17v-3a9 9 0 0 0-9-9c-.7 0-1.37.08-2 .23" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </g>
+
+    <!-- message-square -->
+    <g v-else-if="name === 'message-square'">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </g>
+
+    <!-- send -->
+    <g v-else-if="name === 'send'">
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor" fill-opacity="0.25" />
+    </g>
+
+    <!-- flame -->
+    <g v-else-if="name === 'flame'">
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </g>
+
+    <!-- eye -->
+    <g v-else-if="name === 'eye'">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </g>
+
+    <!-- eye-off -->
+    <g v-else-if="name === 'eye-off'">
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+      <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+      <line x1="2" y1="2" x2="22" y2="22" />
     </g>
   </svg>
 </template>
