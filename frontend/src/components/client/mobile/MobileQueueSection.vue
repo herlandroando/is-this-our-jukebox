@@ -55,35 +55,35 @@ const quickPickVibes = [
       <!-- Section Header -->
       <div class="flex items-center justify-between px-1">
         <div class="flex items-center gap-2">
-          <div class="text-indigo-400">
-            <UiIcon name="list-music" :size="16" />
+          <div class="w-6 h-6 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <UiIcon name="list-music" :size="14" />
           </div>
-          <h3 class="text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5">
-            <span>Office Queue</span>
-            <span class="text-[11px] font-mono tabular-nums px-2 py-0.2 rounded-full bg-white/10 text-indigo-200">
+          <h3 class="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-1.5">
+            <span>Antrean Playlist</span>
+            <span class="text-[10px] font-mono font-bold tabular-nums px-2 py-0.2 rounded-md bg-white/10 text-indigo-200 border border-white/10">
               {{ queue.length }}
             </span>
           </h3>
         </div>
 
-        <span class="text-[11px] text-slate-400 font-medium">
-          Tap <span class="text-indigo-300 font-bold">▲</span> to vote
+        <span class="text-[10px] font-mono text-indigo-300 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+          ▲ TAP TO VOTE
         </span>
       </div>
 
       <!-- Empty State: Compact Vibe Station -->
       <div
         v-if="queue.length === 0"
-        class="empty-queue-station glass-panel p-5 rounded-2xl flex flex-col items-center justify-center text-center gap-3 border-dashed border-white/15"
+        class="empty-queue-station glass-panel p-5 rounded-2xl flex flex-col items-center justify-center text-center gap-2.5 border-dashed border-white/15"
       >
-        <div class="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 shadow-inner">
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
           <UiIcon name="disc" :size="26" strokeWidth="1.2" class="empty-disc-icon" />
         </div>
 
         <div class="flex flex-col gap-0.5 max-w-xs">
-          <h4 class="text-sm font-bold text-white tracking-tight">The Queue is Clear</h4>
-          <p class="text-xs text-slate-400 leading-normal">
-            Queue is empty. Tap a trending hit below to request in one tap:
+          <h4 class="text-xs sm:text-sm font-black text-white tracking-tight">Antrean Masih Kosong 🎧</h4>
+          <p class="text-[11px] text-slate-400 leading-normal">
+            Pilih lagu hits rekomendasi Juke-chan di bawah ini:
           </p>
         </div>
 

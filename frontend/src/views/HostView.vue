@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRoute } from "vue-router";
 import { jukeboxClient } from "../shared/ws.ts";
 import { whoami } from "../shared/api.ts";
@@ -14,23 +14,108 @@ import SeekBar from "../components/SeekBar.vue";
 import UiIcon from "../components/UiIcon.vue";
 import ReactionOverlay from "../components/ReactionOverlay.vue";
 import ReactionDock from "../components/ReactionDock.vue";
+import LeaderboardModal from "../components/rhythm/LeaderboardModal.vue";
+import JukeChan from "../components/mascot/JukeChan.vue";
+import JukeChanStage from "../components/mascot/JukeChanStage.vue";
+import { useJukeChanMood } from "../shared/useJukeChanMood.ts";
+import { setSharedAnalyser, setPlaybackSync } from "../shared/jukechan/beatDriver.ts";
 import { usePlaybackProgress } from "../shared/usePlaybackProgress.ts";
 import { useFavorites } from "../shared/useFavorites.ts";
-import type { MemberRole } from "../shared/types.ts";
+import { SHOW_OSU_MODE } from "../shared/config.ts";
+import TriviaHostSetupModal from "../components/trivia/TriviaHostSetupModal.vue";
+import TriviaModal from "../components/trivia/TriviaModal.vue";
+import PersonaGameHubModal from "../components/persona/PersonaGameHubModal.vue";
+import type { MemberRole, TriviaGameSettings } from "../shared/types.ts";
 
 const route = useRoute();
 
 const token = computed(() => {
   const q = route.query.token;
-  if (typeof q === "string") return q;
-  if (Array.isArray(q) && typeof q[0] === "string") return q[0];
-  return "";
+  let candidate = "";
+  if (typeof q === "string" && q.trim()) {
+    candidate = q.trim();
+  } else if (Array.isArray(q) && typeof q[0] === "string" && q[0].trim()) {
+    candidate = q[0].trim();
+  }
+  if (candidate) {
+    try {
+      localStorage.setItem("jukebox_admin_token", candidate);
+    } catch {
+      // ignore
+    }
+    return candidate;
+  }
+  try {
+    return localStorage.getItem("jukebox_admin_token") || "";
+  } catch {
+    return "";
+  }
 });
+
+watch(
+  token,
+  (tok) => {
+    if (tok) {
+      jukeboxClient.setToken(tok);
+    }
+  },
+  { immediate: true }
+);
 
 type HostTab = "queue" | "catalog" | "lyrics";
 const activeTab = ref<HostTab>("queue");
 
 const isMemberDrawerOpen = ref(false);
+const isLeaderboardModalOpen = ref(false);
+const isTriviaHostSetupOpen = ref(false);
+const isTriviaModalOpen = ref(false);
+const isTriviaCreating = ref(false);
+const isGameHubOpen = ref(false);
+
+const triviaState = computed(() => jukeboxClient.triviaState.value);
+
+watch(triviaState, (ts) => {
+  if (ts && ts.status !== "idle") {
+    isTriviaCreating.value = false;
+    isTriviaModalOpen.value = true;
+  } else if (!ts || ts.status === "idle") {
+    isTriviaCreating.value = false;
+    isTriviaModalOpen.value = false;
+  }
+});
+
+// Tutup loading jika ada error toast dari backend
+watch(
+  () => jukeboxClient.toasts.value.length,
+  () => {
+    const lastToast = jukeboxClient.toasts.value[jukeboxClient.toasts.value.length - 1];
+    if (isTriviaCreating.value && lastToast && (lastToast.type === "error" || lastToast.type === "warning")) {
+      isTriviaCreating.value = false;
+    }
+  }
+);
+
+function onOpenTriviaHost() {
+  if (triviaState.value && triviaState.value.status !== "idle") {
+    isTriviaModalOpen.value = true;
+  } else {
+    isTriviaHostSetupOpen.value = true;
+  }
+}
+
+function onCreateTriviaGame(settings: TriviaGameSettings) {
+  isTriviaHostSetupOpen.value = false;
+  isTriviaCreating.value = true;
+  jukeboxClient.createTriviaLobby(settings);
+
+  // Safety fallback: jika dalam 15s belum ada respon dari server, matikan overlay
+  setTimeout(() => {
+    if (isTriviaCreating.value && (!triviaState.value || triviaState.value.status === "idle")) {
+      isTriviaCreating.value = false;
+    }
+  }, 15000);
+}
+
 const prefillCatalogQuery = ref("");
 const analyserNode = ref<AnalyserNode | null>(null);
 const clientUrl = ref("");
@@ -114,11 +199,72 @@ const {
 
 function onAudioTimeUpdate(cur: number, dur: number) {
   setDirectTime(cur, dur);
+  setPlaybackSync(isPlaying.value, cur);
 }
 
 const allowRemoteAudio = computed(() => state.value?.allowRemoteAudio ?? true);
 
+const {
+  currentMood,
+  detectMood,
+  onComboSurge,
+  onMemberJoined,
+  onTrackSkipped,
+  onTabSwitch,
+  onTrackRequested,
+  onTrackUpvoted,
+  onKaraokeToggled,
+  startIdleLoop,
+  stopIdleLoop,
+} = useJukeChanMood();
+
+let prevMemberIds = new Set<string>();
+watch(
+  members,
+  (list) => {
+    const currentIds = new Set(list.map((m) => m.clientId));
+    if (prevMemberIds.size > 0 && list.length > prevMemberIds.size) {
+      const newest = list.find((m) => !prevMemberIds.has(m.clientId));
+      onMemberJoined(newest?.nickname);
+    }
+    prevMemberIds = currentIds;
+  },
+  { deep: true }
+);
+
+function handleSelectTab(tab: HostTab) {
+  if (tab !== activeTab.value) {
+    onTabSwitch(tab);
+  }
+  activeTab.value = tab;
+}
+
+function handleTrackRequested(track: { title: string }) {
+  onTrackRequested(track.title);
+}
+
+function handleHostUpvote(queueId: string) {
+  const item = queue.value.find((q) => q.queueId === queueId);
+  onTrackUpvoted(item?.title);
+  onUpvote(queueId);
+}
+
+watch(
+  [nowPlaying, () => nowPlaying.value?.mood, () => nowPlaying.value?.genre],
+  () => {
+    detectMood(nowPlaying.value, analyserNode.value);
+  },
+  { immediate: true, deep: true }
+);
+
+watch(analyserNode, (node) => {
+  if (node && nowPlaying.value) {
+    detectMood(nowPlaying.value, node);
+  }
+});
+
 onMounted(async () => {
+  startIdleLoop();
   if (token.value) {
     jukeboxClient.setToken(token.value);
   }
@@ -142,6 +288,10 @@ onMounted(async () => {
   }
 });
 
+onBeforeUnmount(() => {
+  stopIdleLoop();
+});
+
 watch(
   () => state.value?.publicUrl,
   (val) => {
@@ -163,6 +313,7 @@ function toggleRemoteAudio() {
 
 function onAnalyserReady(node: AnalyserNode) {
   analyserNode.value = node;
+  setSharedAnalyser(node);
 }
 
 // Transport controls
@@ -175,6 +326,7 @@ function togglePlay() {
 }
 
 function skip() {
+  onTrackSkipped();
   jukeboxClient.send({ type: "skip", token: token.value });
 }
 
@@ -187,6 +339,7 @@ function toggleAutoDj() {
 }
 
 function toggleKaraoke() {
+  onKaraokeToggled(!karaokeEnabled.value);
   jukeboxClient.send({
     type: "setKaraokeMode",
     enabled: !karaokeEnabled.value,
@@ -245,6 +398,7 @@ let surgeResetTimer: ReturnType<typeof setTimeout> | null = null;
 function onMilestoneSurge(payload: { combo: number; emoji: string }) {
   isSurging.value = true;
   surgeEmoji.value = payload.emoji;
+  onComboSurge(payload.combo, payload.emoji);
   if (surgeResetTimer) clearTimeout(surgeResetTimer);
   surgeResetTimer = setTimeout(() => {
     isSurging.value = false;
@@ -298,6 +452,26 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
         <!-- Live Room Reactions Dock -->
         <ReactionDock :compact="true" class="hidden md:flex" />
 
+        <!-- Rhythm Game Leaderboard Button (Hidden via feature flag) -->
+        <button
+          v-if="SHOW_OSU_MODE"
+          class="glass-pill px-3 py-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-300 hover:text-white border-amber-500/30 hover:border-amber-400 active:scale-95 transition-all cursor-pointer shadow-sm"
+          title="Lihat Papan Peringkat osu!mania 4K"
+          @click="isLeaderboardModalOpen = true"
+        >
+          <span>🏆 Leaderboard</span>
+        </button>
+
+        <!-- Katalog Game Hub Button for Host DJ -->
+        <button
+          class="glass-pill px-3.5 py-1.5 flex items-center gap-1.5 text-xs font-black text-white hover:text-black border-2 border-white bg-[#e60012] hover:bg-white active:scale-95 transition-all cursor-pointer shadow-[3px_3px_0px_#000]"
+          style="transform: skewX(-8deg);"
+          title="Buka Katalog Minigame Kantor (Tebak Lagu & lainnya)"
+          @click="isGameHubOpen = true"
+        >
+          <span>🎮 KATALOG GAME</span>
+        </button>
+
         <!-- Room Member Management Drawer -->
         <button
           class="glass-pill px-3.5 py-1.5 flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white hover:border-white/20 active:scale-95 transition-all cursor-pointer shadow-sm"
@@ -319,8 +493,16 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
 
     <!-- Main Studio Dashboard: 2-Column Responsive Layout -->
     <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      <!-- LEFT COLUMN: Sticky Hero Player, Studio Controls, and QR Panel -->
+      <!-- LEFT COLUMN: Juke-chan Stage Anchor, Sticky Hero Player, Studio Controls, and QR Panel -->
       <section class="lg:col-span-5 xl:col-span-4 flex flex-col gap-5 sticky top-5">
+        <!-- Main Mascot Anchor Stage -->
+        <JukeChanStage
+          :track="nowPlaying"
+          :isPlaying="isPlaying"
+          :compact="false"
+          :interactive="true"
+        />
+
         <!-- Now Playing Hero Card -->
         <div class="now-playing-card glass-panel relative overflow-hidden p-5 sm:p-6 rounded-3xl flex flex-col gap-4 shadow-xl border-white/10">
           <!-- Ambient Backlight Projection -->
@@ -629,20 +811,20 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
 
       <!-- RIGHT STAGE: Multi-Tab Studio Center -->
       <section class="lg:col-span-7 xl:col-span-8 flex flex-col gap-4 min-w-0">
-        <!-- Tactile Stage Tab Navigation Bar -->
-        <nav class="glass-panel p-1.5 rounded-2xl flex items-center justify-between gap-1 shadow-lg bg-black/40 border-white/10 backdrop-blur-2xl">
+        <!-- Tactile Stage Tab Navigation Bar (Anime Sci-Fi HUD) -->
+        <nav class="glass-panel p-1.5 rounded-2xl flex items-center justify-between gap-1.5 shadow-lg bg-obsidian-950/80 border-white/10 backdrop-blur-2xl">
           <!-- Queue Tab -->
           <button
-            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
-            :class="activeTab === 'queue' ? 'bg-white/15 text-white font-extrabold shadow-[0_0_16px_rgba(255,255,255,0.15)] border border-white/15' : 'text-slate-400 hover:text-slate-200 font-semibold'"
-            @click="activeTab = 'queue'"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all active:scale-[0.98] cursor-pointer border"
+            :class="activeTab === 'queue' ? 'bg-indigo-600/90 text-white border-indigo-400/60 shadow-[0_0_20px_rgba(99,102,241,0.5)]' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5 font-semibold'"
+            @click="handleSelectTab('queue')"
           >
             <UiIcon name="list-music" :size="16" />
-            <span>Up Next</span>
+            <span class="font-mono text-xs uppercase tracking-wider">[SYS.QUEUE]</span>
             <span
               v-if="queue.length > 0"
-              class="tabular-nums text-xs px-2 py-0.5 rounded-full font-mono ml-0.5"
-              :class="activeTab === 'queue' ? 'bg-indigo-500/40 text-indigo-200' : 'bg-white/10 text-slate-300'"
+              class="tabular-nums text-xs px-2 py-0.5 rounded-md font-mono ml-0.5"
+              :class="activeTab === 'queue' ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-300'"
             >
               {{ queue.length }}
             </span>
@@ -650,27 +832,27 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
 
           <!-- Catalog & Discovery Tab -->
           <button
-            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
-            :class="activeTab === 'catalog' ? 'bg-indigo-600 text-white font-extrabold shadow-[0_0_20px_rgba(99,102,241,0.45)] border border-indigo-400/40' : 'text-slate-400 hover:text-slate-200 font-semibold'"
-            @click="activeTab = 'catalog'"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all active:scale-[0.98] cursor-pointer border"
+            :class="activeTab === 'catalog' ? 'bg-indigo-600/90 text-white border-indigo-400/60 shadow-[0_0_20px_rgba(99,102,241,0.5)]' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5 font-semibold'"
+            @click="handleSelectTab('catalog')"
           >
             <UiIcon name="sparkles" :size="15" />
-            <span>Catalog & Discovery</span>
+            <span class="font-mono text-xs uppercase tracking-wider">[CATALOG.DB]</span>
           </button>
 
           <!-- Live Lyrics & Karaoke Tab -->
           <button
-            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all active:scale-[0.98] cursor-pointer"
+            class="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all active:scale-[0.98] cursor-pointer border"
             :class="[
               activeTab === 'lyrics'
-                ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white font-extrabold shadow-[0_0_20px_rgba(236,72,153,0.45)] border border-pink-400/40'
-                : 'text-slate-400 hover:text-slate-200 font-semibold',
+                ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white border-pink-400/60 shadow-[0_0_20px_rgba(236,72,153,0.5)]'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5 font-semibold',
               karaokeEnabled && activeTab !== 'lyrics' ? 'text-pink-300' : ''
             ]"
-            @click="activeTab = 'lyrics'"
+            @click="handleSelectTab('lyrics')"
           >
             <UiIcon name="mic" :size="15" />
-            <span>Live Lyrics</span>
+            <span class="font-mono text-xs uppercase tracking-wider">[VOCAL.SYNC]</span>
             <span
               v-if="karaokeEnabled"
               class="w-2 h-2 rounded-full bg-pink-400 animate-pulse ml-0.5"
@@ -739,7 +921,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
                 :isAdmin="true"
                 :userRole="'host'"
                 :currentClientId="currentClientId"
-                @upvote="onUpvote"
+                @upvote="handleHostUpvote"
                 @removeVote="onRemoveVote"
                 @removeTrack="removeTrack"
               />
@@ -792,7 +974,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
               :nickname="hostNickname"
               :nowPlaying="nowPlaying"
               :initialQuery="prefillCatalogQuery"
-              @requestTrack="() => {}"
+              @requestTrack="handleTrackRequested"
             />
           </div>
 
@@ -808,7 +990,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
               :karaokeEnabled="karaokeEnabled"
               :karaokeLevel="karaokeLevel"
               @seek="seekTo"
-              @back="activeTab = 'queue'"
+              @back="handleSelectTab('queue')"
             />
           </div>
         </transition>
@@ -831,6 +1013,78 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
       positionClass="bottom-6 right-6"
       @milestone="onMilestoneSurge"
     />
+
+    <!-- Office Rhythm Leaderboard Modal -->
+    <LeaderboardModal
+      :isOpen="isLeaderboardModalOpen"
+      :currentTrack="nowPlaying"
+      :onClose="() => isLeaderboardModalOpen = false"
+    />
+
+    <!-- Persona 5 Katalog Game (Game Hub) Modal -->
+    <PersonaGameHubModal
+      :isOpen="isGameHubOpen"
+      :isDjOrHost="true"
+      :triviaState="triviaState"
+      :showOsuMode="SHOW_OSU_MODE"
+      @close="isGameHubOpen = false"
+      @openTrivia="onOpenTriviaHost"
+      @openRhythm="() => {}"
+      @openLeaderboard="isLeaderboardModalOpen = true"
+    />
+
+    <!-- Trivia Host Setup Modal -->
+    <TriviaHostSetupModal
+      :isOpen="isTriviaHostSetupOpen"
+      @close="isTriviaHostSetupOpen = false"
+      @createGame="onCreateTriviaGame"
+    />
+
+    <!-- Trivia Main Game Modal -->
+    <TriviaModal
+      :isOpen="isTriviaModalOpen"
+      @close="isTriviaModalOpen = false"
+    />
+
+    <!-- Full-Screen Loading Overlay saat Menyiapkan Room Tebak Lagu -->
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="opacity-0 scale-95"
+      enter-to-class="opacity-100 scale-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="opacity-100 scale-100"
+      leave-to-class="opacity-0 scale-95"
+    >
+      <div
+        v-if="isTriviaCreating"
+        class="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 sm:p-6 bg-obsidian-950/90 backdrop-blur-2xl select-none"
+      >
+        <div class="glass-panel p-8 sm:p-10 rounded-3xl border border-indigo-500/30 bg-obsidian-900/95 max-w-md w-full flex flex-col items-center text-center shadow-[0_0_50px_rgba(99,102,241,0.25)] space-y-5">
+          <!-- Animated Music/Game Icon Badge -->
+          <div class="relative w-20 h-20 flex items-center justify-center">
+            <div class="absolute inset-0 rounded-2xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 animate-spin opacity-40 blur-md"></div>
+            <div class="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-pink-600 flex items-center justify-center shadow-lg text-3xl animate-bounce">
+              🎮
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <h3 class="text-lg sm:text-xl font-black text-white tracking-tight">
+              Menyiapkan Game Tebak Lagu...
+            </h3>
+            <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Sedang memuat playlist, mengacak soal, dan menyiapkan cuplikan audio untuk seluruh ruangan.
+            </p>
+          </div>
+
+          <!-- Pulsing Progress Pill -->
+          <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-xs text-indigo-300 font-bold">
+            <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+            <span>Harap tunggu sebentar 🎵</span>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 

@@ -409,4 +409,8 @@ onBeforeUnmount(() => {
 .lyric-line-wrapper:hover {
   background: rgba(255, 255, 255, 0.03);
 }
+
+.lyric-line-active span:first-child {
+  text-shadow: 0 0 18px rgba(244, 114, 182, 0.7), 0 0 35px rgba(236, 72, 153, 0.45);
+}
 </style>

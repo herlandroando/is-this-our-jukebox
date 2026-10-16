@@ -1,15 +1,18 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import type { MemberRole, QueueTrack } from "../../../shared/types.ts";
 import type { HeadphoneSyncStatus } from "../../../shared/useHeadphoneAudio.ts";
 import MobileHeader from "./MobileHeader.vue";
-import MobileNowPlayingCard from "./MobileNowPlayingCard.vue";
 import MobileDjDeck from "./MobileDjDeck.vue";
 import MobileQueueSection from "./MobileQueueSection.vue";
-import MobileNavigationDock from "./MobileNavigationDock.vue";
 import CatalogView from "../../CatalogView.vue";
 import LyricsView from "../../LyricsView.vue";
 import ReactionDock from "../../ReactionDock.vue";
 import ReactionOverlay from "../../ReactionOverlay.vue";
+import JukeChanStage from "../../mascot/JukeChanStage.vue";
+import PersonaNowPlayingGauge from "../../persona/PersonaNowPlayingGauge.vue";
+import PersonaOverlayPanel from "../../persona/PersonaOverlayPanel.vue";
+import { useJukeChanMood } from "../../../shared/useJukeChanMood.ts";
 
 const props = defineProps<{
   activeTab: "queue" | "catalog" | "lyrics";
@@ -58,15 +61,64 @@ const emit = defineEmits<{
   (e: "upvote", queueId: string): void;
   (e: "removeVote", queueId: string): void;
   (e: "removeTrack", queueId: string): void;
+  (e: "openRhythmModal"): void;
+  (e: "openLeaderboardModal"): void;
+  (e: "openTriviaModal"): void;
+  (e: "openGameHub"): void;
 }>();
+
+const {
+  onTabSwitch,
+  onTrackRequested,
+  onTrackUpvoted,
+  onKaraokeToggled,
+} = useJukeChanMood();
+
+type OverlayType = "none" | "queue" | "catalog" | "lyrics";
+const activeOverlay = ref<OverlayType>("none");
+
+watch(
+  () => props.prefillSearchQuery,
+  (newQ) => {
+    if (newQ) {
+      activeOverlay.value = "catalog";
+    }
+  }
+);
+
+function toggleOverlay(tab: "queue" | "catalog" | "lyrics") {
+  if (activeOverlay.value === tab) {
+    activeOverlay.value = "none";
+  } else {
+    activeOverlay.value = tab;
+    onTabSwitch(tab);
+    emit("selectTab", tab);
+  }
+}
+
+function closeOverlay() {
+  activeOverlay.value = "none";
+}
+
+function handleTrackRequested(track: { title: string }) {
+  onTrackRequested(track.title);
+}
+
+function handleUpvote(queueId: string) {
+  const item = props.queue.find((q) => q.queueId === queueId);
+  onTrackUpvoted(item?.title);
+  emit("upvote", queueId);
+}
+
+function handleToggleKaraoke() {
+  onKaraokeToggled(!props.karaokeEnabled);
+  emit("toggleKaraoke");
+}
 </script>
 
 <template>
-  <div
-    class="client-mobile-layout flex flex-col gap-2.5 sm:gap-3"
-    :class="activeTab === 'lyrics' ? 'pb-20' : 'pb-28 sm:pb-32'"
-  >
-    <!-- Mobile Sticky Top Header -->
+  <div class="client-mobile-layout flex flex-col gap-3 min-h-[100dvh] pb-24 select-none">
+    <!-- Mobile Persona 5 Sticky Header -->
     <MobileHeader
       :status="status"
       :myRole="myRole"
@@ -78,115 +130,208 @@ const emit = defineEmits<{
       @updateNickname="emit('updateNickname', $event)"
     />
 
-    <!-- Dynamic Flow: Switched via Bottom Navigation Dock -->
-    <main class="mobile-main-flow flex flex-col gap-2.5 min-w-0">
-      <!-- 1. QUEUE TAB -->
-      <template v-if="activeTab === 'queue'">
-        <!-- Ultra-Compact Mobile Now Playing Card (~88px) -->
-        <MobileNowPlayingCard
-          :track="nowPlaying"
-          :isPlaying="isPlaying"
-          :isDjOrHost="isDjOrHost"
-          :karaokeEnabled="karaokeEnabled"
-          :karaokeLevel="karaokeLevel"
-          :currentTime="currentTime"
-          :duration="duration"
-          :isFavorite="isFavorite"
-          :isTunedIn="isTunedIn"
-          :isMuted="isMuted"
-          @toggleFavorite="emit('toggleFavorite')"
-          @openLyrics="emit('selectTab', 'lyrics')"
-          @seek="emit('seek', $event)"
-          @lockedSeekClick="emit('lockedSeekClick')"
-          @tuneIn="emit('tuneIn')"
-          @tuneOut="emit('tuneOut')"
-        />
+    <!-- Vertical Full-Screen Persona Stage Hero -->
+    <section class="flex-1 flex flex-col min-h-[380px] sm:min-h-[460px]">
+      <JukeChanStage
+        class="flex-1"
+        :track="nowPlaying"
+        :isPlaying="isPlaying"
+        :compact="false"
+        :fullScreen="true"
+        :interactive="true"
+      />
+    </section>
 
-        <!-- Compact DJ Deck (Only for DJ/Host when track is active) -->
-        <MobileDjDeck
-          v-if="isDjOrHost && nowPlaying"
-          :isPlaying="isPlaying"
-          :karaokeEnabled="karaokeEnabled"
-          :karaokeLevel="karaokeLevel"
-          :volume="volume"
-          @togglePlay="emit('togglePlay')"
-          @skip="emit('skip')"
-          @toggleKaraoke="emit('toggleKaraoke')"
-          @setKaraokeLevel="emit('setKaraokeLevel', $event)"
-          @updateVolume="emit('updateVolume', $event)"
-        />
+    <!-- Persona 5 Now Playing Battle Gauge (Bottom-Pinned above deck) -->
+    <section class="px-1">
+      <PersonaNowPlayingGauge
+        :track="nowPlaying"
+        :isPlaying="isPlaying"
+        :isDjOrHost="isDjOrHost"
+        :karaokeEnabled="karaokeEnabled"
+        :karaokeLevel="karaokeLevel"
+        :volume="volume"
+        :currentTime="currentTime"
+        :duration="duration"
+        :isFavorite="isFavorite"
+        :isTunedIn="isTunedIn"
+        :isMuted="isMuted"
+        :personalVolume="personalVolume"
+        :syncStatus="syncStatus"
+        :driftMs="driftMs"
+        :allowRemoteAudio="allowRemoteAudio"
+        @toggleFavorite="emit('toggleFavorite')"
+        @openLyrics="toggleOverlay('lyrics')"
+        @seek="emit('seek', $event)"
+        @lockedSeekClick="emit('lockedSeekClick')"
+        @togglePlay="emit('togglePlay')"
+        @skip="emit('skip')"
+        @toggleKaraoke="handleToggleKaraoke"
+        @setKaraokeLevel="emit('setKaraokeLevel', $event)"
+        @updateVolume="emit('updateVolume', $event)"
+        @tuneIn="emit('tuneIn')"
+        @tuneOut="emit('tuneOut')"
+        @toggleMute="emit('toggleMute')"
+        @setPersonalVolume="emit('setPersonalVolume', $event)"
+      />
+    </section>
 
-        <!-- Live Room Reactions Dock -->
-        <div class="flex justify-center px-0.5">
-          <ReactionDock :compact="true" class="w-full max-w-[380px]" />
-        </div>
-
-        <!-- Live Queue Section -->
-        <MobileQueueSection
-          :queue="queue"
-          :activeListeners="activeListeners"
-          :headphoneCount="headphoneCount"
-          :myRole="myRole"
-          :currentClientId="currentClientId"
-          @openCatalog="emit('openCatalog', $event)"
-          @upvote="emit('upvote', $event)"
-          @removeVote="emit('removeVote', $event)"
-          @removeTrack="emit('removeTrack', $event)"
-        />
-      </template>
-
-      <!-- 2. CATALOG TAB -->
-      <div v-else-if="activeTab === 'catalog'">
-        <CatalogView
-          :nickname="nickname"
-          :nowPlaying="nowPlaying"
-          :initialQuery="prefillSearchQuery"
-          @requestTrack="() => { /* Track requested, toast handled */ }"
-        />
-      </div>
-
-      <!-- 3. LYRICS TAB -->
-      <div v-else-if="activeTab === 'lyrics'" class="h-[calc(100dvh-8.5rem)] min-h-[460px] flex flex-col">
-        <LyricsView
-          class="flex-1 min-h-0"
-          :track="nowPlaying"
-          :currentTime="currentTime"
-          :duration="duration"
-          :isPlaying="isPlaying"
-          :canSeek="isDjOrHost"
-          :karaokeEnabled="karaokeEnabled"
-          :karaokeLevel="karaokeLevel"
-          @seek="emit('seek', $event)"
-          @back="emit('selectTab', 'queue')"
-        />
-
-        <div class="flex justify-center px-0.5 pt-1 pb-1 shrink-0">
-          <ReactionDock :compact="true" class="w-full max-w-[380px]" />
-        </div>
-      </div>
-    </main>
-
-    <!-- Mobile Floating Navigation Dock with Touch Targets & Safe-Area Margins -->
-    <MobileNavigationDock
-      :activeTab="activeTab"
-      :queueCount="queue.length"
-      :karaokeEnabled="karaokeEnabled"
-      :isTunedIn="isTunedIn"
-      :isMuted="isMuted"
-      :personalVolume="personalVolume"
-      :syncStatus="syncStatus"
-      :driftMs="driftMs"
-      :hasTrack="!!nowPlaying"
+    <!-- Mobile DJ Deck Controls (If DJ/Host) -->
+    <MobileDjDeck
+      v-if="isDjOrHost && nowPlaying"
       :isPlaying="isPlaying"
-      :allowRemoteAudio="allowRemoteAudio"
-      @selectTab="emit('selectTab', $event)"
-      @tuneIn="emit('tuneIn')"
-      @tuneOut="emit('tuneOut')"
-      @toggleMute="emit('toggleMute')"
-      @setPersonalVolume="emit('setPersonalVolume', $event)"
+      :karaokeEnabled="karaokeEnabled"
+      :karaokeLevel="karaokeLevel"
+      :volume="volume"
+      @togglePlay="emit('togglePlay')"
+      @skip="emit('skip')"
+      @toggleKaraoke="handleToggleKaraoke"
+      @setKaraokeLevel="emit('setKaraokeLevel', $event)"
+      @updateVolume="emit('updateVolume', $event)"
     />
 
-    <!-- Immersive Floating Reaction & Shoutout Stream Stage -->
-    <ReactionOverlay positionClass="bottom-24 sm:bottom-28 right-3 sm:right-5" :compact="true" />
+    <!-- Quick Reactions Dock -->
+    <div class="px-1">
+      <ReactionDock :compact="true" class="w-full" />
+    </div>
+
+    <!-- Slanted Bottom Action Dock (Thumb-Friendly Persona Command Strip) -->
+    <div
+      class="fixed bottom-2 inset-x-2 z-40 bg-[#0b0b14]/95 border-2 border-white p-1.5 shadow-[5px_5px_0px_#000000] flex items-center justify-between gap-1.5 backdrop-blur-md"
+      style="transform: skewX(-2deg);"
+    >
+      <!-- Queue -->
+      <button
+        type="button"
+        class="flex-1 h-11 border-2 font-black text-[11px] uppercase tracking-wider flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95"
+        :class="[
+          activeOverlay === 'queue'
+            ? 'bg-[#e60012] text-white border-white shadow-[2px_2px_0px_#000]'
+            : 'bg-black text-slate-300 border-white/40 hover:text-white',
+        ]"
+        style="transform: skewX(-10deg);"
+        @click="toggleOverlay('queue')"
+      >
+        <span style="transform: skewX(10deg);">QUEUE ({{ queue.length }})</span>
+      </button>
+
+      <!-- Catalog -->
+      <button
+        type="button"
+        class="flex-1 h-11 border-2 font-black text-[11px] uppercase tracking-wider flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95"
+        :class="[
+          activeOverlay === 'catalog'
+            ? 'bg-[#00e5ff] text-black border-white shadow-[2px_2px_0px_#000]'
+            : 'bg-black text-slate-300 border-white/40 hover:text-white',
+        ]"
+        style="transform: skewX(-10deg);"
+        @click="toggleOverlay('catalog')"
+      >
+        <span style="transform: skewX(10deg);">CATALOG</span>
+      </button>
+
+      <!-- Lyrics -->
+      <button
+        type="button"
+        class="flex-1 h-11 border-2 font-black text-[11px] uppercase tracking-wider flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95"
+        :class="[
+          activeOverlay === 'lyrics'
+            ? 'bg-[#d946ef] text-white border-white shadow-[2px_2px_0px_#000]'
+            : 'bg-black text-slate-300 border-white/40 hover:text-white',
+        ]"
+        style="transform: skewX(-10deg);"
+        @click="toggleOverlay('lyrics')"
+      >
+        <span style="transform: skewX(10deg);">LIRIK</span>
+      </button>
+
+      <!-- Katalog Game -->
+      <button
+        type="button"
+        class="flex-1 h-11 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-[11px] uppercase tracking-wider flex flex-col items-center justify-center transition-all cursor-pointer active:scale-95 shadow-[2px_2px_0px_#000]"
+        style="transform: skewX(-10deg);"
+        @click="emit('openGameHub')"
+      >
+        <span style="transform: skewX(10deg);">🎮 GAME</span>
+      </button>
+    </div>
+
+    <!-- Mobile Slide-Up Persona Overlay Sheets -->
+    <Teleport to="body">
+      <div
+        v-if="activeOverlay !== 'none'"
+        class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col justify-end p-2 sm:p-4 select-none animate-in fade-in duration-200"
+      >
+        <div class="w-full h-[88vh] max-h-[88vh] flex flex-col">
+          <!-- 1. QUEUE SHEET -->
+          <PersonaOverlayPanel
+            v-if="activeOverlay === 'queue'"
+            title="QUEUE // ANTREAN LAGU"
+            subtitle="DEMOCRATIC_PLAYLIST_SYSTEM"
+            icon="list-music"
+            color="red"
+            :badge="queue.length"
+            @close="closeOverlay"
+          >
+            <MobileQueueSection
+              class="flex-1 overflow-y-auto"
+              :queue="queue"
+              :activeListeners="activeListeners"
+              :headphoneCount="headphoneCount"
+              :myRole="myRole"
+              :currentClientId="currentClientId"
+              @openCatalog="emit('openCatalog', $event); activeOverlay = 'catalog'"
+              @upvote="handleUpvote"
+              @removeVote="emit('removeVote', $event)"
+              @removeTrack="emit('removeTrack', $event)"
+            />
+          </PersonaOverlayPanel>
+
+          <!-- 2. CATALOG SHEET -->
+          <PersonaOverlayPanel
+            v-else-if="activeOverlay === 'catalog'"
+            title="CATALOG // PENCARIAN"
+            subtitle="GLOBAL_MUSIC_ARCHIVE"
+            icon="sparkles"
+            color="cyan"
+            @close="closeOverlay"
+          >
+            <CatalogView
+              class="flex-1 overflow-y-auto"
+              :nickname="nickname"
+              :nowPlaying="nowPlaying"
+              :initialQuery="prefillSearchQuery"
+              @requestTrack="handleTrackRequested"
+            />
+          </PersonaOverlayPanel>
+
+          <!-- 3. LYRICS SHEET -->
+          <PersonaOverlayPanel
+            v-else-if="activeOverlay === 'lyrics'"
+            title="LYRICS // VOCAL KARAOKE"
+            subtitle="REALTIME_SYNCHRONIZED_TEXT"
+            icon="mic"
+            color="purple"
+            @close="closeOverlay"
+          >
+            <LyricsView
+              class="flex-1 min-h-0"
+              :track="nowPlaying"
+              :currentTime="currentTime"
+              :duration="duration"
+              :isPlaying="isPlaying"
+              :canSeek="isDjOrHost"
+              :karaokeEnabled="karaokeEnabled"
+              :karaokeLevel="karaokeLevel"
+              @seek="emit('seek', $event)"
+              @back="closeOverlay"
+            />
+          </PersonaOverlayPanel>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Reaction Stream Overlay -->
+    <ReactionOverlay positionClass="bottom-24 right-3" :compact="true" />
   </div>
 </template>

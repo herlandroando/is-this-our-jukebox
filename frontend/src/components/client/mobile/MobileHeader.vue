@@ -33,108 +33,124 @@ function saveNickname() {
 </script>
 
 <template>
-  <header class="glass-panel shrink-0 px-3.5 py-2.5 rounded-2xl flex items-center justify-between gap-2 shadow-lg border-white/10 backdrop-blur-xl">
+  <header
+    class="shrink-0 px-3.5 py-2.5 bg-[#0b0b14] border-2 border-white flex items-center justify-between gap-2 shadow-[4px_4px_0px_#000000] relative z-30 select-none"
+    style="transform: skewX(-2deg);"
+  >
     <!-- Left: Brand Icon + Title + Live Dot -->
-    <div class="flex items-center gap-2.5 min-w-0">
-      <div class="w-8 h-8 rounded-xl overflow-hidden border border-indigo-500/35 flex items-center justify-center bg-slate-900/60 shrink-0 shadow-[0_0_12px_rgba(99,102,241,0.25)]">
-        <img src="/logo.png" alt="Logo" class="w-full h-full object-cover" />
+    <div class="flex items-center gap-2 min-w-0" style="transform: skewX(2deg);">
+      <div
+        class="w-7 h-7 border-2 border-white flex items-center justify-center bg-[#e60012] shrink-0 shadow-[2px_2px_0px_#000]"
+        style="transform: skewX(-10deg);"
+      >
+        <img src="/logo.png" alt="Logo" class="w-full h-full object-cover p-0.5" />
       </div>
 
       <div class="flex flex-col min-w-0 justify-center">
         <div class="flex items-center gap-1.5 min-w-0">
-          <span class="text-xs sm:text-sm font-black tracking-tight text-white whitespace-nowrap">
-            IsThisOurJukebox
+          <span class="text-xs font-black italic tracking-tight text-white uppercase whitespace-nowrap">
+            JUKEBOX <span class="text-[#e60012]">P5</span>
           </span>
           <span
             class="w-1.5 h-1.5 rounded-full shrink-0"
-            :class="status === 'connected' ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)] animate-pulse' : 'bg-amber-400'"
+            :class="status === 'connected' ? 'bg-[#10b981] shadow-[0_0_6px_#10b981] animate-pulse' : 'bg-amber-400'"
           ></span>
         </div>
 
-        <div class="flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-          <span class="text-emerald-400 font-bold">{{ status === 'connected' ? 'Live' : 'Connecting' }}</span>
+        <div class="flex items-center gap-1 text-[9px] font-mono font-bold text-slate-300">
+          <span class="text-emerald-400">{{ status === 'connected' ? 'LIVE' : 'SYNC' }}</span>
           <span>•</span>
-          <span class="tabular-nums font-mono">{{ activeListeners }} in room</span>
+          <span class="tabular-nums">{{ activeListeners }}P</span>
           <span v-if="headphoneCount > 0" class="text-emerald-400 ml-0.5">🎧 {{ headphoneCount }}</span>
         </div>
       </div>
     </div>
 
-    <!-- Right: Role Pill + 1-Tap Nickname Avatar Pill -->
-    <div class="flex items-center gap-1.5 shrink-0">
+    <!-- Right: Role Badge + Nickname Pill -->
+    <div class="flex items-center gap-1.5 shrink-0" style="transform: skewX(2deg);">
       <!-- Role Badge Button -->
       <button
-        class="role-badge h-7 px-2 active:scale-95 transition-transform cursor-pointer shadow-sm text-[10px]"
-        :class="`role-${myRole}`"
-        :title="`Role: ${myRole.toUpperCase()} (Tap to unlock DJ/Host)`"
+        type="button"
+        class="h-7 px-2 border-2 border-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1 cursor-pointer active:scale-95 shadow-[2px_2px_0px_#000]"
+        :class="[
+          myRole === 'host' ? 'bg-amber-400 text-black' : myRole === 'dj' ? 'bg-[#00e5ff] text-black' : 'bg-black text-white',
+        ]"
+        style="transform: skewX(-10deg);"
+        :title="`Role: ${myRole.toUpperCase()} (Tap untuk kode DJ/Host)`"
         @click="emit('openPasscodeModal')"
       >
-        <UiIcon v-if="myRole === 'host'" name="crown" :size="11" />
-        <UiIcon v-else-if="myRole === 'dj'" name="mic" :size="11" />
-        <UiIcon v-else-if="myRole === 'vip'" name="star-filled" :size="11" />
-        <UiIcon v-else name="user" :size="11" />
-        <span class="font-black uppercase tracking-wider">{{ myRole }}</span>
+        <UiIcon v-if="myRole === 'host'" name="crown" :size="10" />
+        <UiIcon v-else-if="myRole === 'dj'" name="mic" :size="10" />
+        <UiIcon v-else name="user" :size="10" />
+        <span>{{ myRole }}</span>
       </button>
 
       <!-- Nickname Pill Button -->
       <button
-        class="glass-pill h-7 px-2.5 flex items-center gap-1 text-[11px] font-semibold text-slate-200 hover:text-white active:scale-95 transition-all cursor-pointer shadow-sm"
-        title="Tap to change your nickname"
+        type="button"
+        class="h-7 px-2.5 bg-black border-2 border-white/60 text-white font-bold text-[10px] flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-[2px_2px_0px_#000]"
+        style="transform: skewX(-10deg);"
+        title="Ubah nama panggilan"
         @click="openEditNickname"
       >
-        <UiIcon name="user" :size="10" class="text-slate-400" />
-        <span class="max-w-[75px] truncate font-medium">{{ nickname }}</span>
+        <span class="max-w-[90px] truncate font-medium">{{ nickname }}</span>
       </button>
     </div>
 
-    <!-- Clean Mobile Nickname Prompt Dialog -->
+    <!-- Mobile Nickname Prompt Dialog (Persona 5 style) -->
     <div
       v-if="isNicknameModalOpen"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+      class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
       @click.self="isNicknameModalOpen = false"
     >
-      <div class="glass-panel w-full max-w-xs p-4 rounded-3xl border-white/15 flex flex-col gap-3 shadow-2xl bg-obsidian-900/95">
-        <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
-            <UiIcon name="user" :size="14" class="text-indigo-400" />
-            <span>Set Your Nickname</span>
+      <div
+        class="w-full max-w-xs p-5 bg-[#0b0b14] border-4 border-white flex flex-col gap-3 shadow-[8px_8px_0px_#000]"
+        style="transform: skewX(-2deg);"
+      >
+        <div class="flex items-center justify-between border-b-2 border-white/20 pb-2">
+          <h3 class="text-xs font-black italic uppercase text-white tracking-wide flex items-center gap-1.5">
+            <span class="text-[#e60012]">★</span>
+            <span>SET NICKNAME</span>
           </h3>
           <button
-            class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-slate-400 hover:text-white flex items-center justify-center active:scale-90"
+            type="button"
+            class="w-6 h-6 bg-[#e60012] text-white border border-white font-black text-xs flex items-center justify-center active:scale-90"
             @click="isNicknameModalOpen = false"
           >
-            <UiIcon name="x" :size="12" />
+            ✕
           </button>
         </div>
 
-        <p class="text-xs text-slate-400">
-          This name appears when you request songs and vote in the queue.
+        <p class="text-[11px] text-slate-300 font-medium">
+          Nama ini tampil saat kamu request lagu dan voting di antrean.
         </p>
 
-        <div class="flex items-center bg-white/5 border border-white/10 focus-within:border-indigo-400/60 rounded-xl px-3 py-2 transition-all">
+        <div class="bg-black border-2 border-white p-2">
           <input
             v-model="nicknameInput"
             type="text"
-            placeholder="Enter nickname..."
+            placeholder="Ketik nama kamu..."
             maxlength="20"
             autofocus
-            class="w-full bg-transparent border-none outline-none text-sm text-white font-medium placeholder-slate-500"
+            class="w-full bg-transparent border-none outline-none text-xs text-white font-bold"
             @keyup.enter="saveNickname"
           />
         </div>
 
         <div class="flex items-center justify-end gap-2 pt-1">
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 active:scale-95"
+            type="button"
+            class="px-3 py-1 bg-black border border-white/40 text-xs font-bold text-slate-300"
             @click="isNicknameModalOpen = false"
           >
-            Cancel
+            Batal
           </button>
           <button
-            class="btn-primary px-4 py-1.5 rounded-xl text-xs font-bold active:scale-95 shadow-md"
+            type="button"
+            class="px-4 py-1 bg-[#e60012] border-2 border-white text-xs font-black text-white uppercase active:scale-95 shadow-[2px_2px_0px_#000]"
             @click="saveNickname"
           >
-            Save Name
+            Simpan
           </button>
         </div>
       </div>

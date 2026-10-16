@@ -52,23 +52,26 @@ const quickPickVibes = [
 
     <!-- Live Democratic Queue & Vibe Station -->
     <section id="desktop-queue" class="flex flex-col gap-3">
-      <!-- Section Header -->
+      <!-- Section Header with Sci-Fi Decal -->
       <div class="flex items-center justify-between px-1">
         <div class="flex items-center gap-2">
-          <div class="text-indigo-400">
-            <UiIcon name="list-music" :size="18" />
+          <div class="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <UiIcon name="list-music" :size="15" />
           </div>
-          <h3 class="text-base font-extrabold tracking-tight text-white flex items-center gap-2">
-            <span>Office Queue</span>
-            <span class="text-xs font-mono tabular-nums px-2 py-0.5 rounded-full bg-white/10 text-indigo-200">
-              {{ queue.length }}
-            </span>
-          </h3>
+          <div class="flex items-center gap-2">
+            <h3 class="text-base font-black tracking-tight text-white flex items-center gap-2">
+              <span>Queue Playlist</span>
+              <span class="text-xs font-mono font-bold tabular-nums px-2 py-0.5 rounded-md bg-white/10 text-indigo-200 border border-white/10">
+                {{ queue.length }}
+              </span>
+            </h3>
+            <span class="text-[9px] font-mono text-slate-500 uppercase tracking-widest hidden sm:inline">[DEMOCRATIC_ORDER]</span>
+          </div>
         </div>
 
-        <div class="glass-pill px-3 py-1 flex items-center gap-1.5 text-xs font-medium text-slate-400 shadow-sm">
+        <div class="glass-pill px-3 py-1 flex items-center gap-1.5 text-xs font-medium text-slate-400 shadow-sm border border-white/10">
           <UiIcon name="users" :size="12" />
-          <span class="tabular-nums">{{ activeListeners }} in room</span>
+          <span class="tabular-nums font-mono">{{ activeListeners }} in room</span>
           <span
             v-if="headphoneCount > 0"
             class="text-emerald-400 font-bold flex items-center gap-1 ml-0.5"
@@ -79,19 +82,22 @@ const quickPickVibes = [
         </div>
       </div>
 
-      <!-- Empty State: The Obsidian Vibe Station -->
+      <!-- Empty State: The Obsidian Vibe Station with Juke-chan prompt -->
       <div
         v-if="queue.length === 0"
-        class="empty-queue-station glass-panel p-8 rounded-3xl flex flex-col items-center justify-center text-center gap-4 border-dashed border-white/15"
+        class="empty-queue-station glass-panel p-8 rounded-3xl flex flex-col items-center justify-center text-center gap-4 border-dashed border-white/15 relative overflow-hidden"
       >
-        <div class="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 shadow-inner">
+        <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
           <UiIcon name="disc" :size="34" strokeWidth="1.2" class="empty-disc-icon" />
         </div>
 
         <div class="flex flex-col gap-1 max-w-sm">
-          <h4 class="text-lg font-bold text-white tracking-tight">The Queue is Clear</h4>
-          <p class="text-sm text-slate-400 leading-relaxed">
-            The room is waiting for your selection. Tap a trending hit below to request it in one tap:
+          <h4 class="text-lg font-black text-white tracking-tight flex items-center justify-center gap-1.5">
+            <span>Antrean Masih Kosong</span>
+            <span>🎧</span>
+          </h4>
+          <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+            Juke-chan siap memutarkan lagu favoritmu! Pilih salah satu trending hits di bawah ini atau cari di katalog:
           </p>
         </div>
 

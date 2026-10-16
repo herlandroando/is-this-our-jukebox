@@ -215,8 +215,17 @@ function handleImageError(e: Event, track: SearchResult) {
 
 <template>
   <div class="catalog-page flex flex-col gap-5 text-slate-100">
-    <!-- Sticky Search Panel with Tactile Controls -->
-    <div class="sticky top-2 z-20 glass-panel p-3.5 sm:p-4 rounded-3xl flex flex-col gap-3 shadow-xl backdrop-blur-2xl">
+    <!-- Sticky Search Panel with Tactile Controls (Anime Sci-Fi HUD) -->
+    <div class="sticky top-2 z-20 glass-panel p-3.5 sm:p-4 rounded-3xl flex flex-col gap-3 shadow-xl backdrop-blur-2xl border-white/10">
+      <!-- Sci-Fi HUD Header Tag -->
+      <div class="flex items-center justify-between px-1 text-[10px] font-mono font-bold tracking-wider uppercase text-slate-400">
+        <span class="flex items-center gap-1.5 text-indigo-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+          <span>[CATALOG.DB // ARCHIVE_DISCOVERY]</span>
+        </span>
+        <span class="text-slate-500 hidden sm:inline">1-TAP FAST QUEUE</span>
+      </div>
+
       <!-- Search Input Capsule -->
       <div class="relative flex items-center bg-obsidian-900/80 border border-white/10 rounded-2xl px-3.5 py-2.5 shadow-inner transition-all focus-within:border-indigo-400/60 focus-within:shadow-[0_0_20px_rgba(99,102,241,0.25)]">
         <div class="text-slate-400 shrink-0 mr-2.5">
@@ -226,12 +235,12 @@ function handleImageError(e: Event, track: SearchResult) {
           ref="searchInputRef"
           v-model="query"
           type="text"
-          placeholder="Search songs, artists, or paste YouTube link..."
+          placeholder="Cari lagu, musisi, atau paste link YouTube/SoundCloud..."
           class="w-full bg-transparent border-none outline-none text-sm text-white placeholder-slate-400 font-medium"
         />
         <button
           v-if="query"
-          class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center shrink-0 ml-1 active:scale-90 transition-transform"
+          class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center shrink-0 ml-1 active:scale-90 transition-transform cursor-pointer"
           title="Clear search"
           @click="clearSearch"
         >
