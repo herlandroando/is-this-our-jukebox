@@ -26,11 +26,21 @@ export class JukeboxClient {
   public currentTime = ref(0);
   public duration = ref(0);
 
+  // Trivia Song Guess Game State
+  public triviaState = ref<import("./types.ts").TriviaGameState | null>(null);
+  public isTriviaLobbyInvitationOpen = ref(false);
+  public triviaInvitationData = ref<{ hostNickname: string; categoryId: string } | null>(null);
+  public triviaPresets = ref<import("./types.ts").TriviaPresetItem[]>([]);
+
   private timeListeners = new Set<(currentTime: number, duration: number) => void>();
   private seekListeners = new Set<(time: number) => void>();
   private reactionListeners = new Set<(reaction: ReactionBroadcastItem) => void>();
   private shoutoutListeners = new Set<(shoutout: ShoutoutBroadcastItem) => void>();
-  private comboResetListeners = new Set<(lastCombo: number) => void>();
+  private comboResetListeners = new Set<(lastCombo: number, emoji?: string) => void>();
+  private triviaTimerStartListeners = new Set<
+    (payload: { roundIndex: number; startTime: number; endTime: number; durationSec: number }) => void
+  >();
+  private triviaClosedListeners = new Set<() => void>();
 
   constructor() {
     // Generate or restore client ID
@@ -45,8 +55,9 @@ export class JukeboxClient {
   }
 
   public setToken(token: string) {
-    if (this.token !== token) {
-      this.token = token;
+    const tokenChanged = this.token !== token;
+    this.token = token;
+    if (token && (tokenChanged || !this.isAdmin.value)) {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.send({
           type: "hello",
@@ -59,7 +70,9 @@ export class JukeboxClient {
   }
 
   public connect(token?: string) {
-    if (token) this.token = token;
+    if (token) {
+      this.setToken(token);
+    }
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -199,10 +212,138 @@ export class JukeboxClient {
 
       case "comboReset":
         for (const cb of this.comboResetListeners) {
-          cb(msg.lastCombo);
+          cb(msg.lastCombo, msg.emoji);
         }
         break;
+
+      case "trivia:stateSync":
+        this.triviaState.value = msg.state;
+        if (msg.state.status === "idle") {
+          this.isTriviaLobbyInvitationOpen.value = false;
+          this.triviaInvitationData.value = null;
+          for (const cb of this.triviaClosedListeners) {
+            cb();
+          }
+        }
+        break;
+
+      case "trivia:timerStart":
+        if (this.triviaState.value?.currentRound && this.triviaState.value.currentRound.roundIndex === msg.roundIndex) {
+          this.triviaState.value.currentRound.isAudioReady = true;
+          this.triviaState.value.currentRound.startTime = msg.startTime;
+          this.triviaState.value.currentRound.endTime = msg.endTime;
+          this.triviaState.value.currentRound.durationSec = msg.durationSec;
+        }
+        for (const cb of this.triviaTimerStartListeners) {
+          cb(msg);
+        }
+        break;
+
+      case "trivia:lobbyCreated":
+        this.triviaInvitationData.value = {
+          hostNickname: msg.hostNickname,
+          categoryId: msg.categoryId,
+        };
+        // Buka undangan jika user bukan host pembuat lobby
+        if (this.clientId.value && this.triviaState.value?.hostClientId !== this.clientId.value) {
+          this.isTriviaLobbyInvitationOpen.value = true;
+        }
+        break;
+
+      case "trivia:closed":
+        this.triviaState.value = null;
+        this.isTriviaLobbyInvitationOpen.value = false;
+        this.triviaInvitationData.value = null;
+        for (const cb of this.triviaClosedListeners) {
+          cb();
+        }
+        break;
+
+      case "trivia:presetsUpdated":
+        this.triviaPresets.value = msg.presets;
+        break;
     }
+  }
+
+  // --- Trivia Actions ---
+
+  public async fetchTriviaPresets(): Promise<import("./types.ts").TriviaPresetItem[]> {
+    try {
+      const res = await fetch("/api/trivia/presets");
+      if (res.ok) {
+        const data = await res.json();
+        this.triviaPresets.value = data;
+        return data;
+      }
+    } catch (e) {
+      console.warn("fetchTriviaPresets error:", e);
+    }
+    return this.triviaPresets.value;
+  }
+
+  public async previewPlaylist(url: string) {
+    try {
+      const res = await fetch("/api/trivia/preview-playlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn("previewPlaylist error:", e);
+    }
+    return { valid: false, count: 0, sampleTracks: [] };
+  }
+
+  public createTriviaLobby(settings: import("./types.ts").TriviaGameSettings) {
+    this.send({ type: "trivia:create", settings, token: this.token || undefined });
+  }
+
+  public joinTriviaLobby() {
+    this.isTriviaLobbyInvitationOpen.value = false;
+    this.send({ type: "trivia:join" });
+  }
+
+  public leaveTriviaLobby() {
+    this.send({ type: "trivia:leave" });
+  }
+
+  public setTriviaReady(isReady: boolean) {
+    this.send({ type: "trivia:ready", isReady });
+  }
+
+  public setTriviaHostPlaying(isPlaying: boolean) {
+    this.send({ type: "trivia:setHostPlaying", isPlaying, token: this.token || undefined });
+  }
+
+  public forceStartTrivia() {
+    this.send({ type: "trivia:forceStart", token: this.token || undefined });
+  }
+
+  public signalTriviaAudioReady(roundIndex: number) {
+    this.send({ type: "trivia:audioReady", roundIndex });
+  }
+
+  public submitTriviaAnswer(roundIndex: number, optionId: string) {
+    this.send({ type: "trivia:answer", roundIndex, optionId });
+  }
+
+  public closeTriviaGame() {
+    this.send({ type: "trivia:close", token: this.token || undefined });
+  }
+
+  public onTriviaTimerStart(
+    cb: (payload: { roundIndex: number; startTime: number; endTime: number; durationSec: number }) => void
+  ): () => void {
+    this.triviaTimerStartListeners.add(cb);
+    return () => this.triviaTimerStartListeners.delete(cb);
+  }
+
+  public onTriviaClosed(cb: () => void): () => void {
+    this.triviaClosedListeners.add(cb);
+    return () => this.triviaClosedListeners.delete(cb);
   }
 
   public onReaction(cb: (reaction: ReactionBroadcastItem) => void): () => void {
@@ -210,7 +351,7 @@ export class JukeboxClient {
     return () => this.reactionListeners.delete(cb);
   }
 
-  public onComboReset(cb: (lastCombo: number) => void): () => void {
+  public onComboReset(cb: (lastCombo: number, emoji?: string) => void): () => void {
     this.comboResetListeners.add(cb);
     return () => this.comboResetListeners.delete(cb);
   }

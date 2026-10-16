@@ -1,0 +1,304 @@
+{
+  "popIndo": [
+    {
+      "id": "k1BfsO0mxWQ",
+      "provider": "yt",
+      "title": "Dan",
+      "artist": "Sheila On 7",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "Y90xQ-bxkWU",
+      "provider": "yt",
+      "title": "Sephia",
+      "artist": "Sheila On 7",
+      "snippetOffset": 25,
+      "valid": true
+    },
+    {
+      "id": "Qu4QWfa-yX4",
+      "provider": "yt",
+      "title": "Kisah Klasik",
+      "artist": "Sheila On 7",
+      "snippetOffset": 22,
+      "valid": true
+    },
+    {
+      "id": "b3oOzsWjdvU",
+      "provider": "yt",
+      "title": "Ada Apa Denganmu",
+      "artist": "Peterpan",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "zPImzktSfVA",
+      "provider": "yt",
+      "title": "Mungkin Nanti",
+      "artist": "Peterpan",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "YKK5_OQiEa4",
+      "provider": "yt",
+      "title": "Kangen",
+      "artist": "Dewa 19",
+      "snippetOffset": 30,
+      "valid": true
+    },
+    {
+      "id": "T79fB4dkLXM",
+      "provider": "yt",
+      "title": "Pupus",
+      "artist": "Dewa 19",
+      "snippetOffset": 28,
+      "valid": true
+    },
+    {
+      "id": "TNKhZzwZRLU",
+      "provider": "yt",
+      "title": "Kasih Tak Sampai",
+      "artist": "Padi",
+      "snippetOffset": 25,
+      "valid": true
+    },
+    {
+      "id": "OfIKPIRzkps",
+      "provider": "yt",
+      "title": "Demi Waktu",
+      "artist": "Ungu",
+      "snippetOffset": 32,
+      "valid": true
+    },
+    {
+      "id": "NE41kVB0swQ",
+      "provider": "yt",
+      "title": "Ruang Rindu",
+      "artist": "Letto",
+      "snippetOffset": 18,
+      "valid": true
+    },
+    {
+      "id": "fADerMNnN_o",
+      "provider": "yt",
+      "title": "Kala Cinta Menggoda",
+      "artist": "Chrisye",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "4C5fTHpstTk",
+      "provider": "yt",
+      "title": "11 Januari",
+      "artist": "Gigi",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "sDiiKV6cJOs",
+      "provider": "yt",
+      "title": "Jujur",
+      "artist": "Radja",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "n8rLISm84_k",
+      "provider": "yt",
+      "title": "Kenangan Terindah",
+      "artist": "Samsons",
+      "snippetOffset": 26,
+      "valid": true
+    },
+    {
+      "id": "5Tufr2svt0U",
+      "provider": "yt",
+      "title": "Cinta Ini Membunuhku",
+      "artist": "D'Masiv",
+      "snippetOffset": 22,
+      "valid": true
+    }
+  ],
+  "indieIndo": [
+    {
+      "id": "xTQvdE1oOaw",
+      "provider": "yt",
+      "title": "Rumah Ke Rumah",
+      "artist": "Hindia",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "_BJpBN9ZReQ",
+      "provider": "yt",
+      "title": "Evaluasi",
+      "artist": "Hindia",
+      "snippetOffset": 18,
+      "valid": true
+    },
+    {
+      "id": "E7kHvjvU6JY",
+      "provider": "yt",
+      "title": "Hati-Hati di Jalan",
+      "artist": "Tulus",
+      "snippetOffset": 25,
+      "valid": true
+    },
+    {
+      "id": "1RrF6Ee_io0",
+      "provider": "yt",
+      "title": "Monokrom",
+      "artist": "Tulus",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "Xh93FL06JwQ",
+      "provider": "yt",
+      "title": "Bertaut",
+      "artist": "Nadin Amizah",
+      "snippetOffset": 20,
+      "valid": false
+    },
+    {
+      "id": "2MyjWg7P00A",
+      "provider": "yt",
+      "title": "Sial",
+      "artist": "Mahalini",
+      "snippetOffset": 28,
+      "valid": true
+    },
+    {
+      "id": "z-XHpftdXEE",
+      "provider": "yt",
+      "title": "Satu Bulan",
+      "artist": "Bernadya",
+      "snippetOffset": 18,
+      "valid": true
+    },
+    {
+      "id": "M4YpWWj_IWs",
+      "provider": "yt",
+      "title": "Lantas",
+      "artist": "Juicy Luicy",
+      "snippetOffset": 22,
+      "valid": true
+    },
+    {
+      "id": "zhawF9_lpM0",
+      "provider": "yt",
+      "title": "Runtuh",
+      "artist": "Feby Putri feat. Fiersa Besari",
+      "snippetOffset": 24,
+      "valid": true
+    },
+    {
+      "id": "IR7tYHdYN2Q",
+      "provider": "yt",
+      "title": "To the Bone",
+      "artist": "Pamungkas",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "M2QKS9tte9g",
+      "provider": "yt",
+      "title": "Komang",
+      "artist": "Raim Laode",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "2A9Atl2hUkg",
+      "provider": "yt",
+      "title": "Rayuan Perempuan Gila",
+      "artist": "Nadin Amizah",
+      "snippetOffset": 22,
+      "valid": true
+    }
+  ],
+  "rockIndo": [
+    {
+      "id": "4VQk6yAc_Uc",
+      "provider": "yt",
+      "title": "Ku Tak Bisa",
+      "artist": "Slank",
+      "snippetOffset": 22,
+      "valid": true
+    },
+    {
+      "id": "GdgYcEysehM",
+      "provider": "yt",
+      "title": "I Miss You But I Hate You",
+      "artist": "Slank",
+      "snippetOffset": 18,
+      "valid": true
+    },
+    {
+      "id": "0v4UG-JTG8Q",
+      "provider": "yt",
+      "title": "Pelangi di Matamu",
+      "artist": "Jamrud",
+      "snippetOffset": 24,
+      "valid": true
+    },
+    {
+      "id": "lJpxrTw8C3c",
+      "provider": "yt",
+      "title": "Surti Tejo",
+      "artist": "Jamrud",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "8Ejfeb5IiUs",
+      "provider": "yt",
+      "title": "Pelangi",
+      "artist": "Boomerang",
+      "snippetOffset": 30,
+      "valid": true
+    },
+    {
+      "id": "EP8mrzNnC8U",
+      "provider": "yt",
+      "title": "Beraksi",
+      "artist": "Kotak",
+      "snippetOffset": 20,
+      "valid": true
+    },
+    {
+      "id": "TEywNqKZDY4",
+      "provider": "yt",
+      "title": "Pelan-Pelan Saja",
+      "artist": "Kotak",
+      "snippetOffset": 25,
+      "valid": true
+    },
+    {
+      "id": "4gcdyC0xmpI",
+      "provider": "yt",
+      "title": "Jengah",
+      "artist": "Pas Band",
+      "snippetOffset": 15,
+      "valid": true
+    },
+    {
+      "id": "hZhKGhxTEvw",
+      "provider": "yt",
+      "title": "Kamu Ngga' Sendirian",
+      "artist": "Tipe-X",
+      "snippetOffset": 18,
+      "valid": true
+    },
+    {
+      "id": "6S3jYdTsZy4",
+      "provider": "yt",
+      "title": "Arjuna",
+      "artist": "Dewa 19",
+      "snippetOffset": 25,
+      "valid": true
+    }
+  ]
+}

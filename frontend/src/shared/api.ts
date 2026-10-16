@@ -76,3 +76,64 @@ export function getStreamUrl(id: string, provider: AudioProvider, permalink?: st
   }
   return url;
 }
+
+// --- Rhythm Game API Helpers ---
+
+export async function fetchBeatmap(
+  trackId: string,
+  difficulty: "easy" | "normal" | "hard" = "normal",
+  duration?: number
+): Promise<import("./types.ts").RhythmBeatmap> {
+  const params = new URLSearchParams({ difficulty });
+  if (duration && duration > 0) {
+    params.set("duration", duration.toString());
+  }
+  const res = await fetch(`/api/rhythm/beatmap/${encodeURIComponent(trackId)}?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load beatmap: ${res.statusText}`);
+  return await res.json();
+}
+
+export async function fetchTrackLeaderboard(
+  trackId: string,
+  limit: number = 10
+): Promise<import("./types.ts").RhythmScoreEntry[]> {
+  const res = await fetch(`/api/rhythm/leaderboard/${encodeURIComponent(trackId)}?limit=${limit}`);
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function fetchAllRankedSongs(
+  searchQuery: string = "",
+  limit: number = 50
+): Promise<import("./types.ts").RankedSongSummary[]> {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (searchQuery.trim()) {
+    params.set("q", searchQuery.trim());
+  }
+  const res = await fetch(`/api/rhythm/leaderboard/songs?${params.toString()}`);
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function fetchGlobalRankings(
+  limit: number = 20
+): Promise<import("./types.ts").GlobalUserRanking[]> {
+  const res = await fetch(`/api/rhythm/leaderboard/global?limit=${limit}`);
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function submitRhythmScore(
+  data: import("./types.ts").RhythmScoreSubmission
+): Promise<{ success: boolean; entry: import("./types.ts").RhythmScoreEntry; isNewRecord: boolean }> {
+  const res = await fetch("/api/rhythm/score", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Submission failed" }));
+    throw new Error(err.error || "Failed to submit score");
+  }
+  return await res.json();
+}

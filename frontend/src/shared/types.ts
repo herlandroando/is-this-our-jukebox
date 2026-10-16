@@ -35,6 +35,9 @@ export interface QueueTrack extends SearchResult {
   votedIps: string[];
   status: QueueItemStatus;
   fallbackCount?: number;
+  genre?: string;
+  mood?: "hype" | "lofi" | "romance" | "galau";
+  metadataSource?: string;
 }
 
 export interface MemberInfo {
@@ -108,7 +111,17 @@ export type ClientMessage =
   | { type: "toggleRemoteAudio"; enabled: boolean; token?: string }
   | { type: "setListening"; isListening: boolean }
   | { type: "reaction"; emoji: string; combo?: number }
-  | { type: "shoutout"; text: string };
+  | { type: "shoutout"; text: string }
+  // Trivia Song Guess Game
+  | { type: "trivia:create"; settings: TriviaGameSettings; token?: string }
+  | { type: "trivia:join" }
+  | { type: "trivia:leave" }
+  | { type: "trivia:ready"; isReady: boolean }
+  | { type: "trivia:setHostPlaying"; isPlaying: boolean; token?: string }
+  | { type: "trivia:forceStart"; token?: string }
+  | { type: "trivia:audioReady"; roundIndex: number }
+  | { type: "trivia:answer"; roundIndex: number; optionId: string }
+  | { type: "trivia:close"; token?: string };
 
 export interface ReactionBroadcastItem {
   id: string;
@@ -119,6 +132,7 @@ export interface ReactionBroadcastItem {
   combo: number;
   contributorsCount: number;
   isMilestone?: boolean;
+  isClimax?: boolean;
   timestamp: number;
 }
 
@@ -142,12 +156,203 @@ export type ServerMessage =
   | { type: "roleGranted"; role: MemberRole; message: string }
   | { type: "toast"; message: string; toastType: "info" | "success" | "warning" | "error" }
   | ({ type: "reactionBroadcast" } & ReactionBroadcastItem)
-  | { type: "comboReset"; lastCombo: number }
-  | ({ type: "shoutoutBroadcast" } & ShoutoutBroadcastItem);
+  | { type: "comboReset"; lastCombo: number; emoji?: string }
+  | ({ type: "shoutoutBroadcast" } & ShoutoutBroadcastItem)
+  | {
+      type: "rhythmScoreBroadcast";
+      score: RhythmScoreEntry;
+      isNewRecord?: boolean;
+    }
+  // Trivia Broadcasts
+  | { type: "trivia:stateSync"; state: TriviaGameState }
+  | { type: "trivia:lobbyCreated"; hostNickname: string; categoryId: string }
+  | { type: "trivia:roundStart"; round: TriviaQuestion }
+  | {
+      type: "trivia:timerStart";
+      roundIndex: number;
+      startTime: number;
+      endTime: number;
+      durationSec: number;
+    }
+  | { type: "trivia:roundEnd"; result: TriviaRoundResult }
+  | { type: "trivia:gameOver"; podium: TriviaPodiumEntry[] }
+  | { type: "trivia:closed" }
+  | { type: "trivia:presetsUpdated"; presets: TriviaPresetItem[] };
+
+export interface TriviaPresetItem {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: "playlist" | "dynamic";
+  playlistId?: string;
+  isBuiltin: boolean;
+  isEnabled: boolean;
+  sortOrder: number;
+  songCount?: number;
+  lastSyncedAt?: number;
+  updatedAt?: number;
+}
+
+export interface TriviaCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  popularArtists: string[];
+}
+
+export interface TriviaOption {
+  id: string;
+  label: string;
+  title: string;
+  artist: string;
+}
+
+export interface TriviaGameSettings {
+  categoryId: string;
+  roundCount: number;
+  roundDurationSec: number;
+  customPlaylistUrl?: string;
+}
+
+export interface TriviaPlayer {
+  clientId: string;
+  nickname: string;
+  role: MemberRole;
+  score: number;
+  isReady: boolean;
+  hasAnswered: boolean;
+  selectedOptionId?: string;
+  lastAnswerCorrect?: boolean;
+  lastAnswerPoints?: number;
+  joinedAt: number;
+}
+
+export interface TriviaQuestion {
+  roundIndex: number;
+  totalRounds: number;
+  trackId: string;
+  provider: AudioProvider;
+  snippetStartSec: number;
+  durationSec: number;
+  options: TriviaOption[];
+  startTime: number;
+  endTime: number;
+  isAudioReady?: boolean;
+}
+
+export interface TriviaPlayerRoundResult {
+  clientId: string;
+  nickname: string;
+  isCorrect: boolean;
+  pointsEarned: number;
+  totalScore: number;
+  selectedOptionId?: string;
+}
+
+export interface TriviaRoundResult {
+  roundIndex: number;
+  totalRounds: number;
+  correctOptionId: string;
+  correctTitle: string;
+  correctArtist: string;
+  trackId: string;
+  playerResults: TriviaPlayerRoundResult[];
+}
+
+export interface TriviaPodiumEntry {
+  rank: number;
+  clientId: string;
+  nickname: string;
+  score: number;
+}
+
+export type TriviaGameStatus =
+  | "idle"
+  | "lobby"
+  | "countdown"
+  | "question"
+  | "recap"
+  | "podium";
+
+export interface TriviaGameState {
+  status: TriviaGameStatus;
+  hostClientId: string | null;
+  hostNickname: string;
+  isHostPlaying?: boolean;
+  settings: TriviaGameSettings;
+  players: Record<string, TriviaPlayer>;
+  currentRound?: TriviaQuestion;
+  roundResult?: TriviaRoundResult;
+  podium?: TriviaPodiumEntry[];
+  countdownSec?: number;
+}
 
 export interface ToastItem {
   id: string;
   message: string;
   type: "info" | "success" | "warning" | "error";
   timestamp: number;
+}
+
+export interface RhythmNote {
+  time: number;
+  lane: 0 | 1 | 2 | 3;
+  duration?: number;
+}
+
+export interface RhythmBeatmap {
+  trackId: string;
+  bpm: number;
+  duration: number;
+  totalNotes: number;
+  notes: RhythmNote[];
+  difficulty: "easy" | "normal" | "hard";
+  generatedAt: number;
+}
+
+export interface RhythmScoreSubmission {
+  trackId: string;
+  trackTitle: string;
+  trackArtist: string;
+  trackThumbnail?: string;
+  clientId: string;
+  nickname: string;
+  score: number;
+  accuracy: number;
+  maxCombo: number;
+  grade: "SS" | "S" | "A" | "B" | "C" | "D";
+  hits300: number;
+  hits200: number;
+  hits100: number;
+  hits50: number;
+  misses: number;
+  difficulty: "easy" | "normal" | "hard";
+}
+
+export interface RhythmScoreEntry extends RhythmScoreSubmission {
+  id: number;
+  createdAt: number;
+}
+
+export interface RankedSongSummary {
+  trackId: string;
+  trackTitle: string;
+  trackArtist: string;
+  trackThumbnail?: string;
+  topScore: number;
+  topPlayer: string;
+  topGrade: string;
+  totalPlays: number;
+}
+
+export interface GlobalUserRanking {
+  nickname: string;
+  clientId: string;
+  totalScore: number;
+  totalPlays: number;
+  crownsCount: number;
+  avgAccuracy: number;
+  bestGrade: string;
 }

@@ -16,6 +16,7 @@
     "clean": "bun --filter @jukebox/backend clean && bun --filter @jukebox/frontend clean",
     "typecheck": "bun --filter @jukebox/backend typecheck && bun --filter @jukebox/frontend typecheck",
     "smoke:ws": "bun scripts/smoke-ws.ts",
+    "smoke:trivia": "bun scripts/smoke-trivia.ts",
     "tunnel": "bun scripts/tunnel.ts",
     "tunnel:quick": "bun scripts/tunnel.ts --quick",
     "tunnel:named": "bun scripts/tunnel.ts --named"
