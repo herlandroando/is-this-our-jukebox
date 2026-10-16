@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ClientMessage, MemberRole, ServerMessage, ServerState } from "../types.ts";
 import { queueStore } from "../queue/store.ts";
 import { verifyAdminToken } from "../adminToken.ts";
+import { triviaGameManager } from "../trivia/gameManager.ts";
 
 export interface WsUserData {
   id: string;
@@ -19,16 +20,25 @@ function canControlPlayback(ws: ServerWebSocket<WsUserData>, token?: string): bo
   return false;
 }
 
+interface EmojiComboState {
+  count: number;
+  lastUpdatedAt: number;
+  contributors: Set<string>;
+  decayTimer?: ReturnType<typeof setTimeout> | null;
+  isClimaxing?: boolean;
+}
+
+function getComboDecayWindow(combo: number): number {
+  if (combo >= 80) return 3000;
+  if (combo >= 50) return 2600;
+  if (combo >= 20) return 2200;
+  return 1800;
+}
+
 export class JukeboxWsHub {
   private sockets = new Set<ServerWebSocket<WsUserData>>();
   private lastShoutoutTimes = new Map<string, number>();
-  private roomCombo = {
-    count: 0,
-    lastEmoji: "",
-    lastUpdatedAt: 0,
-    contributors: new Set<string>(),
-  };
-  private comboDecayTimer: ReturnType<typeof setTimeout> | null = null;
+  private emojiCombos = new Map<string, EmojiComboState>();
 
   constructor() {
     // Listen to queue store state changes and broadcast to all
@@ -45,6 +55,56 @@ export class JukeboxWsHub {
         type: "toast",
         message,
         toastType,
+      });
+    });
+
+    // Listen to Trivia Game events and broadcast
+    triviaGameManager.subscribe((state, eventType, payload) => {
+      if (eventType === "presetsUpdated") {
+        this.broadcast({
+          type: "trivia:presetsUpdated",
+          presets: payload.presets,
+        });
+        return;
+      }
+      if (eventType === "lobbyCreated") {
+        this.broadcast({
+          type: "trivia:lobbyCreated",
+          hostNickname: state.hostNickname,
+          categoryId: state.settings.categoryId,
+        });
+      } else if (eventType === "roundStart") {
+        this.broadcast({
+          type: "trivia:roundStart",
+          round: payload.round,
+        });
+      } else if (eventType === "timerStart") {
+        this.broadcast({
+          type: "trivia:timerStart",
+          roundIndex: payload.roundIndex,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          durationSec: payload.durationSec,
+        });
+      } else if (eventType === "roundEnd") {
+        this.broadcast({
+          type: "trivia:roundEnd",
+          result: payload.result,
+        });
+      } else if (eventType === "gameOver") {
+        this.broadcast({
+          type: "trivia:gameOver",
+          podium: payload.podium,
+        });
+      } else if (eventType === "gameClosed") {
+        this.broadcast({
+          type: "trivia:closed",
+        });
+      }
+
+      this.broadcast({
+        type: "trivia:stateSync",
+        state,
       });
     });
   }
@@ -75,11 +135,23 @@ export class JukeboxWsHub {
       },
       this.sockets.size
     );
+
+    // 4. Send current Trivia Game state if a game is active
+    const triviaState = triviaGameManager.getState();
+    if (triviaState.status !== "idle") {
+      ws.send(
+        JSON.stringify({
+          type: "trivia:stateSync",
+          state: triviaState,
+        })
+      );
+    }
   }
 
   public handleClose(ws: ServerWebSocket<WsUserData>) {
     this.sockets.delete(ws);
     this.lastShoutoutTimes.delete(ws.data.id);
+    triviaGameManager.leaveLobby(ws.data.id);
     queueStore.removeMember(ws.data.id, this.sockets.size);
   }
 
@@ -173,6 +245,31 @@ export class JukeboxWsHub {
               toastType: "error",
             })
           );
+          break;
+        }
+
+        if (verifyAdminToken(msg.passcode)) {
+          queueStore.recordPasscodeAttempt(clientKey, true);
+          ws.data.isAdmin = true;
+          ws.data.role = "host";
+          ws.data.nickname = ws.data.nickname || "Host DJ 🎧";
+          queueStore.updateMemberRole(clientId, "host");
+          ws.send(
+            JSON.stringify({
+              type: "welcome",
+              isAdmin: true,
+              clientId,
+              role: "host",
+            })
+          );
+          ws.send(
+            JSON.stringify({
+              type: "roleGranted",
+              role: "host",
+              message: "👑 Host DJ Access Unlocked!",
+            })
+          );
+          queueStore.toast(`👑 ${ws.data.nickname} unlocked Host Access!`, "success");
           break;
         }
 
@@ -347,34 +444,83 @@ export class JukeboxWsHub {
         if (!emoji) break;
 
         const now = Date.now();
-        // Collaborative Room Combo Stacking:
-        // If tapped within 1800ms of any room reaction, increment combo and track contributors
-        if (now - this.roomCombo.lastUpdatedAt < 1800 && this.roomCombo.count > 0) {
-          this.roomCombo.count++;
-          this.roomCombo.contributors.add(ws.data.id);
-        } else {
-          this.roomCombo.count = 1;
-          this.roomCombo.contributors = new Set([ws.data.id]);
+        let state = this.emojiCombos.get(emoji);
+        if (!state) {
+          state = {
+            count: 0,
+            lastUpdatedAt: 0,
+            contributors: new Set<string>(),
+            decayTimer: null,
+            isClimaxing: false,
+          };
+          this.emojiCombos.set(emoji, state);
         }
 
-        this.roomCombo.lastEmoji = emoji;
-        this.roomCombo.lastUpdatedAt = now;
-
-        const currentCombo = this.roomCombo.count;
-        const contributorsCount = this.roomCombo.contributors.size;
-        const isMilestone = currentCombo >= 10 && (currentCombo % 5 === 0);
-
-        // Reset decay timer (1800ms idle window before room combo resets)
-        if (this.comboDecayTimer) clearTimeout(this.comboDecayTimer);
-        this.comboDecayTimer = setTimeout(() => {
-          const lastCombo = this.roomCombo.count;
-          this.roomCombo.count = 0;
-          this.roomCombo.contributors.clear();
+        // If this emoji is currently in climax explosion cooldown,
+        // do not increment combo and do not cancel or reset the auto-reset timer!
+        if (state.isClimaxing) {
           this.broadcast({
-            type: "comboReset",
-            lastCombo,
+            type: "reactionBroadcast",
+            id: randomUUID(),
+            clientId: ws.data.id,
+            nickname: ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "Anonymous"),
+            role: ws.data.role,
+            emoji,
+            combo: 100,
+            contributorsCount: state.contributors.size,
+            isMilestone: false,
+            isClimax: false,
+            timestamp: now,
           });
-        }, 1800);
+          break;
+        }
+
+        const decayWindow = getComboDecayWindow(state.count);
+
+        // Independent Collaborative Stacking per emoji:
+        // Combo only increments and stacks if within decayWindow of reactions for the same emoji
+        if (now - state.lastUpdatedAt < decayWindow && state.count > 0) {
+          state.count++;
+          state.contributors.add(ws.data.id);
+        } else {
+          state.count = 1;
+          state.contributors = new Set([ws.data.id]);
+        }
+
+        state.lastUpdatedAt = now;
+
+        const currentCombo = state.count;
+        const contributorsCount = state.contributors.size;
+        const isClimax = currentCombo >= 100;
+        const isMilestone = isClimax || (currentCombo >= 10 && currentCombo % 5 === 0);
+
+        // Reset decay timer specifically for this emoji
+        if (state.decayTimer) clearTimeout(state.decayTimer);
+
+        if (isClimax) {
+          // Lock state so subsequent taps during explosion do not cancel or postpone reset
+          state.isClimaxing = true;
+          state.decayTimer = setTimeout(() => {
+            const lastCombo = state.count;
+            this.emojiCombos.delete(emoji);
+            this.broadcast({
+              type: "comboReset",
+              lastCombo,
+              emoji,
+            });
+          }, 3000);
+        } else {
+          const nextDecayWindow = getComboDecayWindow(currentCombo);
+          state.decayTimer = setTimeout(() => {
+            const lastCombo = state.count;
+            this.emojiCombos.delete(emoji);
+            this.broadcast({
+              type: "comboReset",
+              lastCombo,
+              emoji,
+            });
+          }, nextDecayWindow);
+        }
 
         this.broadcast({
           type: "reactionBroadcast",
@@ -386,6 +532,7 @@ export class JukeboxWsHub {
           combo: currentCombo,
           contributorsCount,
           isMilestone,
+          isClimax,
           timestamp: now,
         });
         break;
@@ -418,6 +565,110 @@ export class JukeboxWsHub {
           text,
           timestamp: now,
         });
+        break;
+      }
+
+      // Trivia Song Guess Game Handlers
+      case "trivia:create": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat membuat sesi Tebak Lagu!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+
+        const res = await triviaGameManager.createLobby(
+          ws.data.id,
+          ws.data.nickname || (ws.data.isAdmin ? "Host DJ 🎧" : "DJ"),
+          msg.settings
+        );
+        if (!res.success && res.message) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.message,
+              toastType: "warning",
+            })
+          );
+        }
+        break;
+      }
+
+      case "trivia:join": {
+        triviaGameManager.joinLobby(
+          ws.data.id,
+          ws.data.nickname || "Anonymous",
+          ws.data.role
+        );
+        break;
+      }
+
+      case "trivia:leave": {
+        triviaGameManager.leaveLobby(ws.data.id);
+        break;
+      }
+
+      case "trivia:ready": {
+        triviaGameManager.setReady(ws.data.id, msg.isReady);
+        break;
+      }
+
+      case "trivia:setHostPlaying": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat mengubah status bermain!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        triviaGameManager.setHostPlaying(ws.data.id, msg.isPlaying);
+        break;
+      }
+
+      case "trivia:forceStart": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat memulai game!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        triviaGameManager.forceStart(ws.data.id);
+        break;
+      }
+
+      case "trivia:audioReady": {
+        triviaGameManager.onAudioReady(msg.roundIndex);
+        break;
+      }
+
+      case "trivia:answer": {
+        triviaGameManager.submitAnswer(ws.data.id, msg.roundIndex, msg.optionId);
+        break;
+      }
+
+      case "trivia:close": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat menutup game!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        triviaGameManager.closeGame();
         break;
       }
     }

@@ -5,7 +5,7 @@ import type { AudioProvider, SearchResult } from "../types.ts";
 let ytMusicClient: YTMusic | null = null;
 let ytMusicInit: Promise<YTMusic> | null = null;
 
-async function getYTMusic(): Promise<YTMusic> {
+export async function getYTMusic(): Promise<YTMusic> {
   if (ytMusicClient) return ytMusicClient;
   if (!ytMusicInit) {
     ytMusicInit = (async () => {
@@ -18,10 +18,16 @@ async function getYTMusic(): Promise<YTMusic> {
   return ytMusicInit;
 }
 
+function getSoundcloudClass(): typeof Soundcloud {
+  const mod: any = Soundcloud;
+  return mod.default?.default || mod.Soundcloud || mod.default || mod;
+}
+
 let scClient: Soundcloud | null = null;
 function getSoundcloud(): Soundcloud {
   if (!scClient) {
-    scClient = new Soundcloud();
+    const ScClass = getSoundcloudClass();
+    scClient = new ScClass();
   }
   return scClient;
 }

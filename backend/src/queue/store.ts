@@ -11,6 +11,7 @@ import { preResolveTrack } from "../stream/resolver.ts";
 import { searchFallback } from "../search/index.ts";
 import { autoDj } from "../stream/autoDj.ts";
 import { jukeboxDb } from "../db.ts";
+import { resolveTrackMetadata } from "../metadata/index.ts";
 
 export type StateListener = (state: ServerState) => void;
 export type ToastListener = (message: string, type: "info" | "success" | "warning" | "error") => void;
@@ -53,6 +54,12 @@ export class QueueStore {
   private publicUrl: string | null = process.env.PUBLIC_URL ? process.env.PUBLIC_URL.trim().replace(/\/+$/, "") : null;
   private tunnelMode: string = process.env.TUNNEL_MODE || (process.env.PUBLIC_URL ? "named" : "off");
   private failedPasscodeAttempts = new Map<string, { count: number; lockedUntil: number }>();
+  private savedJukeboxState: {
+    track: QueueTrack | null;
+    currentTime: number;
+    duration: number;
+    isPlaying: boolean;
+  } | null = null;
 
   private stateListeners: Set<StateListener> = new Set();
   private toastListeners: Set<ToastListener> = new Set();
@@ -74,6 +81,9 @@ export class QueueStore {
         this.duration = restoredNowPlaying.duration || restoredNowPlaying.track.duration || 0;
         this.isPlaying = false; // Restored in paused state as requested
         console.log(`[queue] Restored now-playing track: "${this.nowPlaying.title}" (paused).`);
+        if (!this.nowPlaying.mood) {
+          this.enrichTrackMetadata(this.nowPlaying);
+        }
       }
 
       const savedAutoDj = jukeboxDb.getMeta("auto_dj_enabled");
@@ -261,6 +271,22 @@ export class QueueStore {
     }
   }
 
+  private async enrichTrackMetadata(track: QueueTrack | null) {
+    if (!track) return;
+    try {
+      const meta = await resolveTrackMetadata(track);
+      if (this.nowPlaying && this.nowPlaying.id === track.id) {
+        this.nowPlaying.genre = meta.genre;
+        this.nowPlaying.mood = meta.mood;
+        this.nowPlaying.metadataSource = meta.source;
+        this.persistNowPlaying();
+        this.notify();
+      }
+    } catch (err) {
+      console.warn("[queue] enrichTrackMetadata error:", err);
+    }
+  }
+
   private sortQueue() {
     this.queue.sort((a, b) => {
       if (b.votes !== a.votes) {
@@ -322,8 +348,9 @@ export class QueueStore {
       this.notify();
     }
 
-    // Pre-resolve stream in the background for zero-stutter playback
+    // Pre-resolve stream & metadata in the background for zero-stutter playback
     void (async () => {
+      resolveTrackMetadata(track).catch(() => {});
       const res = await preResolveTrack(track, (q) => searchFallback(q, track.provider));
       const target = this.queue.find((t) => t.queueId === queueItem.queueId);
       if (target) {
@@ -432,6 +459,7 @@ export class QueueStore {
       this.duration = next.duration;
       this.persistQueue();
       this.persistNowPlaying();
+      this.enrichTrackMetadata(next);
       this.notify();
       return;
     }
@@ -465,6 +493,7 @@ export class QueueStore {
         this.duration = autoTrack.duration;
         this.persistNowPlaying();
         this.toast(`Auto-DJ selected "${rec.title}" by ${rec.artist}`, "info");
+        this.enrichTrackMetadata(autoTrack);
         this.notify();
         return;
       }
@@ -529,6 +558,40 @@ export class QueueStore {
     this.isPlaying = false;
     this.persistNowPlaying();
     this.notify();
+  }
+
+  public pauseForTrivia(): { pausedTrackTitle: string | null } {
+    if (this.nowPlaying) {
+      this.savedJukeboxState = {
+        track: this.nowPlaying,
+        currentTime: this.currentTime,
+        duration: this.duration,
+        isPlaying: this.isPlaying,
+      };
+      const title = this.nowPlaying.title;
+      this.isPlaying = false;
+      this.persistNowPlaying();
+      this.notify();
+      this.toast("Jukebox dijeda untuk sesi Tebak Lagu 🎮", "info");
+      return { pausedTrackTitle: title };
+    }
+    return { pausedTrackTitle: null };
+  }
+
+  public resumeAfterTrivia() {
+    if (this.savedJukeboxState && this.savedJukeboxState.track) {
+      this.nowPlaying = this.savedJukeboxState.track;
+      this.currentTime = this.savedJukeboxState.currentTime;
+      this.duration = this.savedJukeboxState.duration;
+      this.isPlaying = true;
+      const title = this.nowPlaying.title;
+      this.savedJukeboxState = null;
+      this.persistNowPlaying();
+      this.notify();
+      this.toast(`Melanjutkan lagu: "${title}" 🎵`, "success");
+    } else if (!this.nowPlaying && this.queue.length > 0) {
+      void this.nextTrack();
+    }
   }
 
   public setVolume(v: number) {

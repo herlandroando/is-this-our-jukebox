@@ -32,11 +32,17 @@ export function invalidateStreamCache(id: string) {
   streamCache.delete(id);
 }
 
+function getSoundcloudClass(): typeof Soundcloud {
+  const mod: any = Soundcloud;
+  return mod.default?.default || mod.Soundcloud || mod.default || mod;
+}
+
 // Cache soundcloud client instance
 let scInstance: Soundcloud | null = null;
 function getSoundCloud(): Soundcloud {
   if (!scInstance) {
-    scInstance = new Soundcloud();
+    const ScClass = getSoundcloudClass();
+    scInstance = new ScClass();
   }
   return scInstance;
 }
@@ -62,7 +68,8 @@ async function resolveYouTubeUrl(videoId: string, signal?: AbortSignal): Promise
   for (const prefix of candidatePrefixes) {
     if (signal?.aborted) return null;
     try {
-      const cmd = [...prefix, "-g", "-f", "ba/b", ytUrl];
+      // Prioritize m4a/aac (format 140) for universal native browser <audio> compatibility
+      const cmd = [...prefix, "-g", "-f", "ba[ext=m4a]/ba[vcodec=none][acodec^=mp4a]/ba/b", ytUrl];
       const proc = Bun.spawn(cmd, {
         stdout: "pipe",
         stderr: "ignore",
@@ -112,7 +119,8 @@ async function resolveYouTubeUrl(videoId: string, signal?: AbortSignal): Promise
 /**
  * Resolves a SoundCloud direct audio stream URL or progressive stream.
  */
-async function resolveSoundCloudUrl(trackIdOrUrl: string): Promise<string | null> {
+async function resolveSoundCloudUrl(trackIdOrUrl: string, signal?: AbortSignal): Promise<string | null> {
+  if (signal?.aborted) return null;
   try {
     const sc = getSoundCloud();
     let url = trackIdOrUrl;
@@ -124,12 +132,63 @@ async function resolveSoundCloudUrl(trackIdOrUrl: string): Promise<string | null
       }
     }
     
-    // Resolve stream
-    const stream = await sc.util.streamTrack(url);
-    if (stream && (stream as any).url) {
-      return (stream as any).url;
+    // 1. Try direct progressive stream link first
+    try {
+      const progressive = await sc.util.streamLink(url, "progressive");
+      if (progressive && progressive.startsWith("http")) {
+        return progressive;
+      }
+    } catch {
+      // progressive not available, proceed to fallback
     }
-    return url;
+
+    // 2. Try yt-dlp to extract stream for SoundCloud URL
+    const candidatePrefixes: string[][] = memoizedYtDlpPrefix
+      ? [memoizedYtDlpPrefix]
+      : [
+          ["yt-dlp"],
+          ["python", "-m", "yt_dlp"],
+          ["py", "-3", "-m", "yt_dlp"],
+        ];
+
+    for (const prefix of candidatePrefixes) {
+      if (signal?.aborted) return null;
+      try {
+        const cmd = [...prefix, "-g", url];
+        const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
+        const onAbort = () => {
+          try {
+            proc.kill();
+          } catch {
+            // ignore
+          }
+        };
+        if (signal) signal.addEventListener("abort", onAbort, { once: true });
+        const text = await new Response(proc.stdout).text();
+        const exitCode = await proc.exited;
+        if (signal) signal.removeEventListener("abort", onAbort);
+        if (signal?.aborted) return null;
+
+        if (exitCode === 0 && text.trim().startsWith("http")) {
+          memoizedYtDlpPrefix = prefix;
+          return text.trim().split("\n")[0].trim();
+        }
+      } catch {
+        // try next command variant
+      }
+    }
+
+    // 3. Fallback to HLS stream link
+    try {
+      const hls = await sc.util.streamLink(url, "hls");
+      if (hls && hls.startsWith("http")) {
+        return hls;
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
   } catch (err) {
     console.warn(`[resolver] SoundCloud resolve failed for ${trackIdOrUrl}:`, err);
     return null;
@@ -143,22 +202,27 @@ export async function resolveStreamUrl(
   id: string,
   provider: AudioProvider,
   permalink?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  forceFresh?: boolean
 ): Promise<string | null> {
   if (signal?.aborted) return null;
 
-  const cached = streamCache.get(id);
-  if (cached && cached.expiresAt > Date.now()) {
-    // Refresh LRU order on hit
+  if (!forceFresh) {
+    const cached = streamCache.get(id);
+    if (cached && cached.expiresAt > Date.now()) {
+      // Refresh LRU order on hit
+      streamCache.delete(id);
+      streamCache.set(id, cached);
+      return cached.url;
+    }
+  } else {
     streamCache.delete(id);
-    streamCache.set(id, cached);
-    return cached.url;
   }
 
   let resolvedUrl: string | null = null;
 
   if (provider === "sc") {
-    resolvedUrl = await resolveSoundCloudUrl(permalink || id);
+    resolvedUrl = await resolveSoundCloudUrl(permalink || id, signal);
   } else {
     resolvedUrl = await resolveYouTubeUrl(id, signal);
   }

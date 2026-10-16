@@ -30,6 +30,9 @@ export interface QueueTrack extends SearchResult {
   votedIps: string[]; // IP addresses or client UUIDs that voted (for backward compatibility)
   status: QueueItemStatus;
   fallbackCount?: number;
+  genre?: string;
+  mood?: "hype" | "lofi" | "romance" | "galau";
+  metadataSource?: string;
 }
 
 export interface MemberInfo {
@@ -88,6 +91,7 @@ export interface ServerState {
   allowRemoteAudio?: boolean;
   publicUrl?: string | null;
   tunnelMode?: string;
+  triviaState?: import("./trivia/types.ts").TriviaGameState;
 }
 
 export type ClientMessage =
@@ -116,7 +120,17 @@ export type ClientMessage =
   | { type: "toggleRemoteAudio"; enabled: boolean; token?: string }
   | { type: "setListening"; isListening: boolean }
   | { type: "reaction"; emoji: string; combo?: number }
-  | { type: "shoutout"; text: string };
+  | { type: "shoutout"; text: string }
+  // Trivia Song Guess Game
+  | { type: "trivia:create"; settings: import("./trivia/types.ts").TriviaGameSettings; token?: string }
+  | { type: "trivia:join" }
+  | { type: "trivia:leave" }
+  | { type: "trivia:ready"; isReady: boolean }
+  | { type: "trivia:setHostPlaying"; isPlaying: boolean; token?: string }
+  | { type: "trivia:forceStart"; token?: string }
+  | { type: "trivia:audioReady"; roundIndex: number }
+  | { type: "trivia:answer"; roundIndex: number; optionId: string }
+  | { type: "trivia:close"; token?: string };
 
 export type ServerMessage =
   | { type: "welcome"; isAdmin: boolean; clientId: string; role: MemberRole }
@@ -138,11 +152,13 @@ export type ServerMessage =
       combo: number;
       contributorsCount: number;
       isMilestone?: boolean;
+      isClimax?: boolean;
       timestamp: number;
     }
   | {
       type: "comboReset";
       lastCombo: number;
+      emoji?: string;
     }
   | {
       type: "shoutoutBroadcast";
@@ -152,4 +168,38 @@ export type ServerMessage =
       role: MemberRole;
       text: string;
       timestamp: number;
-    };
+    }
+  | {
+      type: "rhythmScoreBroadcast";
+      score: {
+        id: number;
+        trackId: string;
+        trackTitle: string;
+        trackArtist: string;
+        trackThumbnail?: string;
+        clientId: string;
+        nickname: string;
+        score: number;
+        accuracy: number;
+        maxCombo: number;
+        grade: string;
+        difficulty: string;
+        createdAt: number;
+      };
+      isNewRecord?: boolean;
+    }
+  // Trivia Broadcasts
+  | { type: "trivia:stateSync"; state: import("./trivia/types.ts").TriviaGameState }
+  | { type: "trivia:lobbyCreated"; hostNickname: string; categoryId: string }
+  | { type: "trivia:roundStart"; round: import("./trivia/types.ts").TriviaQuestion }
+  | {
+      type: "trivia:timerStart";
+      roundIndex: number;
+      startTime: number;
+      endTime: number;
+      durationSec: number;
+    }
+  | { type: "trivia:roundEnd"; result: import("./trivia/types.ts").TriviaRoundResult }
+  | { type: "trivia:gameOver"; podium: import("./trivia/types.ts").TriviaPodiumEntry[] }
+  | { type: "trivia:presetsUpdated"; presets: import("./trivia/types.ts").TriviaPresetItem[] }
+  | { type: "trivia:closed" };
