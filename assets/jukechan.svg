@@ -1,0 +1,552 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 620" width="1600" height="620">
+  <defs>
+    <!-- Stage Background -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0b14" />
+      <stop offset="50%" stop-color="#130f26" />
+      <stop offset="100%" stop-color="#090812" />
+    </linearGradient>
+
+    <!-- Cel-Shaded Skin Gradients -->
+    <linearGradient id="skinBase" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#fff4ec" />
+      <stop offset="65%" stop-color="#ffe6d6" />
+      <stop offset="100%" stop-color="#f7ccb8" />
+    </linearGradient>
+    <linearGradient id="skinShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e8b09b" />
+      <stop offset="100%" stop-color="#d4917a" />
+    </linearGradient>
+    <radialGradient id="blushGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff4d7e" stop-opacity="0.65" />
+      <stop offset="70%" stop-color="#ff7597" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#ff7597" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Cel-Shaded Hair Gradients (Indigo/Violet + Neon Rim) -->
+    <linearGradient id="hairBack" x1="0%" y1="0%" x2="10%" y2="100%">
+      <stop offset="0%" stop-color="#191130" />
+      <stop offset="55%" stop-color="#2c1b52" />
+      <stop offset="100%" stop-color="#6b21a8" />
+    </linearGradient>
+    <linearGradient id="hairMain" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#5b349e" />
+      <stop offset="45%" stop-color="#3c1f78" />
+      <stop offset="85%" stop-color="#281354" />
+      <stop offset="100%" stop-color="#00f5d4" />
+    </linearGradient>
+    <linearGradient id="hairMainPink" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#6438ad" />
+      <stop offset="50%" stop-color="#432282" />
+      <stop offset="100%" stop-color="#f72585" />
+    </linearGradient>
+    <linearGradient id="hairMainBlue" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#4a3080" />
+      <stop offset="55%" stop-color="#2c1c54" />
+      <stop offset="100%" stop-color="#4ea8de" />
+    </linearGradient>
+    <linearGradient id="hairShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a0d36" />
+      <stop offset="100%" stop-color="#2d1757" />
+    </linearGradient>
+
+    <!-- Multi-Layered Anime Iris -->
+    <linearGradient id="irisHype" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#140826" />
+      <stop offset="28%" stop-color="#5a189a" />
+      <stop offset="68%" stop-color="#c77dff" />
+      <stop offset="100%" stop-color="#00f5d4" />
+    </linearGradient>
+    <linearGradient id="irisGalau" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="35%" stop-color="#1d4ed8" />
+      <stop offset="75%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#bae6fd" />
+    </linearGradient>
+
+    <!-- Streetwear Hoodie Gradients -->
+    <linearGradient id="hoodieBody" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1836" />
+      <stop offset="60%" stop-color="#141026" />
+      <stop offset="100%" stop-color="#0c0918" />
+    </linearGradient>
+    <linearGradient id="hoodieFold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0c0918" />
+      <stop offset="100%" stop-color="#2b224d" />
+    </linearGradient>
+    <linearGradient id="headphoneMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b3154" />
+      <stop offset="50%" stop-color="#1d1630" />
+      <stop offset="100%" stop-color="#100b1c" />
+    </linearGradient>
+
+    <!-- Soft Glow Filter -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- ================================================================= -->
+    <!-- REUSABLE BASE TORSO + HEADPHONES + BACK HAIR (3/4 BUST-UP POSE)   -->
+    <!-- Slightly angled to viewer's left (3/4 turn), dynamic asymmetry     -->
+    <!-- ================================================================= -->
+    <g id="rigBackHair">
+      <!-- Deep back hair silhouette flowing past shoulders -->
+      <path d="M 118 135 C 68 195, 52 310, 64 475 C 88 465, 108 430, 118 390 L 290 395 C 304 435, 322 465, 344 472 C 362 340, 348 205, 294 140 Z" fill="url(#hairBack)" stroke="#120924" stroke-width="3" stroke-linejoin="round" />
+      <!-- Left flowing hair tail (layered strands) -->
+      <path d="M 82 255 C 58 325, 50 405, 64 475 C 78 455, 92 420, 96 375 C 88 335, 84 295, 82 255 Z" fill="#180e2e" opacity="0.7" />
+      <!-- Right flowing hair tail (3/4 perspective depth) -->
+      <path d="M 312 245 C 338 315, 346 400, 344 472 C 325 450, 312 415, 304 370 Z" fill="#180e2e" opacity="0.7" />
+      <!-- Rim light strand on outer hair -->
+      <path d="M 68 310 C 60 365, 60 420, 66 465" fill="none" stroke="#00f5d4" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+      <path d="M 336 300 C 344 360, 345 415, 342 462" fill="none" stroke="#f72585" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+    </g>
+
+    <g id="rigTorsoAndNeck">
+      <!-- Slender anime neck angled 3/4, with clavicle & cast shadow -->
+      <path d="M 176 286 C 177 315, 168 336, 142 348 L 262 352 C 238 338, 228 316, 226 286 Z" fill="url(#skinBase)" stroke="#241332" stroke-width="2.4" />
+      <!-- High-contrast cel cast shadow under chin (3/4 shape) -->
+      <path d="M 176 288 C 186 304, 214 306, 226 290 C 226 312, 212 326, 194 331 C 182 325, 176 308, 176 288 Z" fill="url(#skinShadow)" />
+      <!-- Delicate collarbone / clavicle line -->
+      <path d="M 162 344 Q 186 353 196 349 M 210 349 Q 224 353 244 345" fill="none" stroke="#d4917a" stroke-width="2" stroke-linecap="round" />
+
+      <!-- Oversized Techwear/Streetwear DJ Hoodie (3/4 Perspective) -->
+      <path d="M 58 515 C 64 415, 92 365, 140 346 C 168 364, 232 366, 264 348 C 312 366, 338 415, 344 515 Z" fill="url(#hoodieBody)" stroke="#090612" stroke-width="3.2" stroke-linejoin="round" />
+
+      <!-- Inner Shirt & Cyber Choker Collar -->
+      <path d="M 152 348 Q 200 374 252 350 Q 228 386 198 386 Q 170 385 152 348 Z" fill="#0d0a1a" stroke="#2d234a" stroke-width="2" />
+      <!-- Choker with glowing audio jack emblem -->
+      <path d="M 177 328 Q 201 335 225 329" fill="none" stroke="#140f24" stroke-width="6" stroke-linecap="round" />
+      <path d="M 179 328 Q 201 335 223 329" fill="none" stroke="#00f5d4" stroke-width="1.8" stroke-linecap="round" />
+      <circle cx="201" cy="333" r="4" fill="#f72585" stroke="#ffffff" stroke-width="1" />
+
+      <!-- Bulky Anime Hoodie Collar / Hood Flaps with Neon Piping -->
+      <path d="M 118 356 C 128 334, 152 336, 166 368 L 198 398 L 142 406 C 122 392, 114 374, 118 356 Z" fill="#251d42" stroke="#090612" stroke-width="2.6" stroke-linejoin="round" />
+      <path d="M 284 358 C 274 336, 250 338, 234 368 L 198 398 L 258 408 C 278 394, 288 376, 284 358 Z" fill="#1d1636" stroke="#090612" stroke-width="2.6" stroke-linejoin="round" />
+      <!-- Neon Tech Piping on Collar -->
+      <path d="M 124 362 L 146 398 L 198 394 L 252 400 L 278 364" fill="none" stroke="#f72585" stroke-width="2.8" stroke-linecap="round" filter="url(#neonGlow)" />
+
+      <!-- Hoodie Drawstrings with Glowing Tips -->
+      <path d="M 178 392 C 174 425, 172 452, 175 475" fill="none" stroke="#00f5d4" stroke-width="3" stroke-linecap="round" />
+      <path d="M 218 392 C 222 425, 224 448, 221 470" fill="none" stroke="#00f5d4" stroke-width="3" stroke-linecap="round" />
+      <rect x="171" y="470" width="8" height="14" rx="3" fill="#f72585" />
+      <rect x="217" y="465" width="8" height="14" rx="3" fill="#f72585" />
+
+      <!-- Cloth Folds & Cel Shading on Chest/Shoulders -->
+      <path d="M 96 410 C 112 435, 122 468, 118 512" fill="none" stroke="#090612" stroke-width="2.4" stroke-linecap="round" />
+      <path d="M 304 412 C 288 438, 280 470, 284 512" fill="none" stroke="#090612" stroke-width="2.4" stroke-linecap="round" />
+      <path d="M 140 408 Q 198 424 256 410" fill="none" stroke="#2f2554" stroke-width="2" stroke-linecap="round" />
+
+      <!-- Chest Equalizer Graphic (Skewed slightly for 3/4 perspective) -->
+      <g transform="translate(154, 422) skewY(-2)">
+        <rect x="0" y="18" width="11" height="36" rx="4" fill="#f72585" filter="url(#neonGlow)" />
+        <rect x="16" y="4" width="11" height="50" rx="4" fill="#00f5d4" filter="url(#neonGlow)" />
+        <rect x="32" y="12" width="11" height="42" rx="4" fill="#f72585" />
+        <rect x="48" y="0" width="11" height="54" rx="4" fill="#00f5d4" filter="url(#neonGlow)" />
+        <rect x="64" y="14" width="11" height="40" rx="4" fill="#f72585" />
+        <rect x="80" y="24" width="11" height="30" rx="4" fill="#00f5d4" />
+      </g>
+    </g>
+
+    <!-- Sculpted 3/4 Anime Head Base (Asymmetric cheek contour on left vs right) -->
+    <g id="rigHeadBase">
+      <!-- Headband arch behind front bangs -->
+      <path d="M 96 190 C 86 62, 304 58, 300 190" fill="none" stroke="url(#headphoneMetal)" stroke-width="20" stroke-linecap="round" />
+      <path d="M 102 172 C 96 70, 296 66, 294 172" fill="none" stroke="#00f5d4" stroke-width="4.5" stroke-linecap="round" filter="url(#neonGlow)" />
+
+      <!-- Right Ear (Viewer's right, slightly further back in 3/4 view) -->
+      <path d="M 278 198 C 292 196, 296 218, 282 232 C 276 236, 272 230, 274 222 Z" fill="url(#skinBase)" stroke="#3d1e36" stroke-width="2" />
+
+      <!-- Anime Face Contour: 3/4 Angle (Left cheek has subtle S-curve, chin slightly left of center at x=195) -->
+      <path d="
+        M 196 86
+        C 252 86, 284 126, 282 184
+        C 281 214, 276 240, 263 260
+        C 246 282, 216 300, 195 304
+        C 175 300, 144 282, 128 260
+        C 116 244, 112 228, 115 210
+        C 117 198, 114 188, 116 174
+        C 118 124, 144 86, 196 86 Z"
+        fill="url(#skinBase)"
+        stroke="#2b142c"
+        stroke-width="2.6"
+        stroke-linejoin="round"
+      />
+
+      <!-- Cel-Shaded Facial Depth: Soft temple & jawline shadow on right side -->
+      <path d="M 272 145 C 282 185, 276 232, 260 258 C 245 280, 216 297, 195 302 C 218 292, 244 272, 256 248 C 268 222, 272 180, 264 145 Z" fill="#ebbaa6" opacity="0.65" />
+
+      <!-- Soft Airbrushed Cheek Blush + Anime Hash Slash Marks -->
+      <ellipse cx="144" cy="236" rx="24" ry="13" fill="url(#blushGrad)" />
+      <ellipse cx="250" cy="236" rx="22" ry="12" fill="url(#blushGrad)" />
+      <g stroke="#ff5c8a" stroke-width="1.6" stroke-linecap="round" opacity="0.65">
+        <line x1="136" y1="234" x2="140" y2="240" />
+        <line x1="143" y1="233" x2="147" y2="239" />
+        <line x1="150" y1="234" x2="154" y2="240" />
+        <line x1="244" y1="234" x2="248" y2="240" />
+        <line x1="251" y1="233" x2="255" y2="239" />
+      </g>
+
+      <!-- Delicate 3/4 Anime Nose (Tiny shadow wedge + pinpoint highlight + lineart) -->
+      <path d="M 193 220 L 189 233 L 197 235 Z" fill="#e09f87" opacity="0.85" />
+      <path d="M 193 220 L 189 233 L 195 235" fill="none" stroke="#4a2030" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="192" cy="229" r="1.5" fill="#ffffff" opacity="0.9" />
+    </g>
+
+    <!-- Front Bangs, Side Locks, Vinyl Clip, DJ Earcups & Ahoge (Layered over Face) -->
+    <g id="rigFrontHairAndGear">
+      <!-- Left Side-Lock (Framing cheek, tapered strands with cel shadow) -->
+      <path d="M 118 128 C 92 172, 84 242, 98 345 C 106 322, 110 296, 112 268 C 115 298, 120 322, 128 338 C 122 275, 122 205, 132 138 Z" fill="url(#hairMain)" stroke="#140a29" stroke-width="2.4" stroke-linejoin="round" />
+      <!-- Right Side-Lock -->
+      <path d="M 276 128 C 302 174, 308 242, 294 342 C 284 318, 280 292, 278 265 C 275 294, 270 316, 264 332 C 270 272, 270 205, 262 138 Z" fill="url(#hairMain)" stroke="#140a29" stroke-width="2.4" stroke-linejoin="round" />
+
+      <!-- Bangs Cast Shadow on Forehead -->
+      <path d="M 122 162 C 135 184, 152 196, 158 175 C 168 192, 184 202, 194 182 C 204 196, 218 198, 226 176 C 238 194, 254 192, 266 168 L 266 150 L 122 150 Z" fill="#d99b84" opacity="0.45" />
+
+      <!-- Multi-Strand Sculpted Front Bangs (Dynamic variable locks) -->
+      <path d="
+        M 92 166
+        C 88 86, 138 48, 198 48
+        C 258 48, 308 84, 304 164
+        C 292 140, 282 126, 270 120
+        C 276 152, 270 184, 258 204
+        C 260 172, 252 144, 240 130
+        C 242 166, 232 192, 218 208
+        C 224 176, 218 146, 206 132
+        C 204 170, 196 194, 186 206
+        C 186 176, 182 148, 174 134
+        C 168 170, 156 196, 140 208
+        C 150 176, 148 146, 138 130
+        C 132 162, 122 186, 110 198
+        C 116 170, 114 144, 106 124
+        C 98 136, 94 150, 92 166 Z"
+        fill="url(#hairMain)"
+        stroke="#140a29"
+        stroke-width="2.6"
+        stroke-linejoin="round"
+      />
+
+      <!-- Anime "Angel Ring" Specular Hair Highlights (Crisp faceted bands) -->
+      <g fill="#e0aaff" opacity="0.78">
+        <path d="M 132 106 Q 146 98 156 108 L 152 122 Q 142 114 128 120 Z" />
+        <path d="M 168 98 Q 192 92 214 98 L 210 112 Q 190 106 166 112 Z" />
+        <path d="M 228 102 Q 246 98 260 110 L 254 122 Q 242 112 224 114 Z" />
+      </g>
+      <g fill="#ffffff" opacity="0.85">
+        <ellipse cx="144" cy="108" rx="6" ry="2.5" transform="rotate(-12 144 108)" />
+        <ellipse cx="190" cy="100" rx="10" ry="3" />
+        <ellipse cx="242" cy="108" rx="6" ry="2.5" transform="rotate(14 242 108)" />
+      </g>
+
+      <!-- Signature Vinyl Record Hairclip (Detailed grooves + sheen) -->
+      <g transform="translate(254, 124) rotate(12)">
+        <circle cx="0" cy="0" r="16" fill="#0d0b14" stroke="#00f5d4" stroke-width="2" />
+        <circle cx="0" cy="0" r="12" fill="none" stroke="#2d2640" stroke-width="1" />
+        <circle cx="0" cy="0" r="9" fill="none" stroke="#2d2640" stroke-width="1" />
+        <!-- Vinyl Diagonal Sheen -->
+        <path d="M -11 -11 L -4 -4 M 4 4 L 11 11" stroke="#ffffff" stroke-width="2" opacity="0.45" stroke-linecap="round" />
+        <circle cx="0" cy="0" r="5.5" fill="#f72585" />
+        <circle cx="0" cy="0" r="2" fill="#ffffff" />
+        <!-- Hairpin bar -->
+        <rect x="-22" y="-2" width="10" height="4" rx="2" fill="#00f5d4" stroke="#0d0b14" stroke-width="1" />
+      </g>
+
+      <!-- Pro DJ Headphone Earcups (3D perspective, thick cushion + glowing EQ ring) -->
+      <!-- Left Earcup (Closer to viewer in 3/4) -->
+      <g transform="translate(88, 206) rotate(-6)">
+        <rect x="-18" y="-36" width="34" height="72" rx="16" fill="#120d24" stroke="#090612" stroke-width="2.6" />
+        <rect x="-12" y="-32" width="26" height="64" rx="13" fill="url(#headphoneMetal)" stroke="#4a3e6d" stroke-width="1.5" />
+        <ellipse cx="2" cy="0" rx="7" ry="21" fill="#140c29" stroke="#00f5d4" stroke-width="2.5" filter="url(#neonGlow)" />
+        <ellipse cx="2" cy="0" rx="3" ry="11" fill="#f72585" />
+        <circle cx="2" cy="-24" r="2.2" fill="#ffffff" opacity="0.8" />
+      </g>
+      <!-- Right Earcup (Slightly narrower due to 3/4 turn) -->
+      <g transform="translate(304, 206) rotate(6)">
+        <rect x="-14" y="-34" width="30" height="68" rx="14" fill="#120d24" stroke="#090612" stroke-width="2.6" />
+        <rect x="-10" y="-30" width="22" height="60" rx="11" fill="url(#headphoneMetal)" stroke="#4a3e6d" stroke-width="1.5" />
+        <ellipse cx="0" cy="0" rx="6" ry="19" fill="#140c29" stroke="#00f5d4" stroke-width="2.5" filter="url(#neonGlow)" />
+        <ellipse cx="0" cy="0" rx="2.5" ry="10" fill="#f72585" />
+      </g>
+
+      <!-- Expressive Note/Waveform Ahoge -->
+      <path d="M 196 52 C 178 10, 228 -2, 248 22 C 228 16, 206 26, 204 52 Z" fill="url(#hairMain)" stroke="#140a29" stroke-width="2.2" stroke-linejoin="round" />
+      <path d="M 199 42 C 192 20, 218 12, 234 20" fill="none" stroke="#00f5d4" stroke-width="1.8" stroke-linecap="round" opacity="0.85" />
+    </g>
+
+    <!-- Detailed Anime Eye Component (Left Eye at 152,204 / Right Eye at 240,204) -->
+    <g id="detailedEyeLeft">
+      <!-- Soft upper eyelid crease -->
+      <path d="M 130 184 Q 154 175 178 186" fill="none" stroke="#8c5363" stroke-width="1.8" stroke-linecap="round" />
+      <!-- Sclera (White of eye + subtle top shadow) -->
+      <path d="M 129 203 C 133 184, 173 183, 179 204 C 176 225, 136 226, 129 203 Z" fill="#ffffff" />
+      <path d="M 129 203 C 133 184, 173 183, 179 204 C 172 194, 138 194, 129 203 Z" fill="#d8cce8" />
+      <!-- 4-Layer Jewel Iris -->
+      <ellipse cx="155" cy="205" rx="15.5" ry="17.5" fill="#1a0933" />
+      <ellipse cx="155" cy="206" rx="14" ry="16" fill="url(#irisHype)" />
+      <!-- Lower glowing crescent inside iris -->
+      <path d="M 143 210 A 12 12 0 0 0 167 210 A 12 14 0 0 1 143 210 Z" fill="#00f5d4" opacity="0.65" />
+      <!-- Deep pupil -->
+      <ellipse cx="155" cy="205" rx="6.5" ry="8" fill="#120624" />
+      <!-- Signature Musical Note ♪ in Iris -->
+      <text x="150" y="210" font-family="serif" font-size="13" font-weight="bold" fill="#ffffff" opacity="0.92">♪</text>
+      <!-- Dual Specular Catchlights -->
+      <circle cx="145" cy="195" r="5.5" fill="#ffffff" />
+      <circle cx="164" cy="214" r="2.8" fill="#ffffff" />
+      <circle cx="143" cy="212" r="1.5" fill="#00f5d4" />
+      <!-- Calligraphic Upper Eyelash (Thick sculpted fill with wing tip) -->
+      <path d="M 123 204 C 130 182, 172 180, 183 201 C 180 204, 178 204, 175 201 C 166 187, 136 188, 127 205 L 122 200 Z" fill="#190c26" />
+      <!-- Outer eyelash spikes -->
+      <path d="M 126 196 L 119 191 M 131 190 L 126 184" stroke="#190c26" stroke-width="2.4" stroke-linecap="round" />
+      <!-- Subtle lower lash line -->
+      <path d="M 138 222 Q 155 226 171 221" fill="none" stroke="#5e364f" stroke-width="1.8" stroke-linecap="round" />
+    </g>
+
+    <g id="detailedEyeRight">
+      <path d="M 218 186 Q 242 175 264 185" fill="none" stroke="#8c5363" stroke-width="1.8" stroke-linecap="round" />
+      <path d="M 217 204 C 222 183, 261 184, 265 203 C 258 226, 220 225, 217 204 Z" fill="#ffffff" />
+      <path d="M 217 204 C 222 183, 261 184, 265 203 C 256 194, 224 194, 217 204 Z" fill="#d8cce8" />
+      <ellipse cx="241" cy="205" rx="15" ry="17.5" fill="#1a0933" />
+      <ellipse cx="241" cy="206" rx="13.5" ry="16" fill="url(#irisHype)" />
+      <path d="M 229 210 A 12 12 0 0 0 253 210 A 12 14 0 0 1 229 210 Z" fill="#00f5d4" opacity="0.65" />
+      <ellipse cx="241" cy="205" rx="6.2" ry="8" fill="#120624" />
+      <text x="236" y="210" font-family="serif" font-size="13" font-weight="bold" fill="#ffffff" opacity="0.92">♪</text>
+      <circle cx="231" cy="195" r="5.2" fill="#ffffff" />
+      <circle cx="249" cy="214" r="2.6" fill="#ffffff" />
+      <circle cx="230" cy="212" r="1.5" fill="#00f5d4" />
+      <path d="M 213 201 C 224 180, 264 182, 271 204 L 276 200 C 272 204, 268 205, 265 203 C 258 188, 228 187, 219 201 Z" fill="#190c26" />
+      <path d="M 268 196 L 275 191 M 263 190 L 268 184" stroke="#190c26" stroke-width="2.4" stroke-linecap="round" />
+      <path d="M 225 221 Q 241 226 256 222" fill="none" stroke="#5e364f" stroke-width="1.8" stroke-linecap="round" />
+    </g>
+  </defs>
+
+  <!-- Canvas Backdrop -->
+  <rect width="1600" height="620" fill="url(#bgGrad)" />
+
+  <!-- Subtle Grid Dividers & Header Banner -->
+  <g stroke="#ffffff" stroke-opacity="0.12" stroke-width="1">
+    <line x1="400" y1="20" x2="400" y2="600" stroke-dasharray="6 6" />
+    <line x1="800" y1="20" x2="800" y2="600" stroke-dasharray="6 6" />
+    <line x1="1200" y1="20" x2="1200" y2="600" stroke-dasharray="6 6" />
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- PANEL 1: NEUTRAL / GROOVE BASE POSE (Right Hand Holding DJ Earcup)    -->
+  <!-- ===================================================================== -->
+  <g transform="translate(0, 20)">
+    <!-- Persona-style Tag -->
+    <g transform="translate(24, 12)">
+      <rect x="0" y="0" width="210" height="28" fill="#e60012" stroke="#ffffff" stroke-width="2" transform="skewX(-14)" />
+      <text x="14" y="19" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="900" letter-spacing="1">01 // NEUTRAL 3/4 RIG</text>
+    </g>
+
+    <use href="#rigBackHair" />
+    <use href="#rigTorsoAndNeck" />
+
+    <!-- Left Arm (Relaxed down with subtle elbow bend) -->
+    <g id="p1ArmLeft">
+      <path d="M 88 378 C 64 415, 56 465, 62 515 L 106 515 C 104 475, 108 435, 118 402 Z" fill="#18122e" stroke="#090612" stroke-width="2.8" />
+      <path d="M 74 445 L 102 452" stroke="#00f5d4" stroke-width="2.5" stroke-linecap="round" />
+    </g>
+
+    <use href="#rigHeadBase" />
+    <use href="#detailedEyeLeft" />
+    <use href="#detailedEyeRight" />
+
+    <!-- Neutral Confident Brows -->
+    <path d="M 130 168 Q 154 160 176 167" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+    <path d="M 220 167 Q 242 160 264 168" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+
+    <!-- Subtle Anime Smile with Lip Tint -->
+    <path d="M 183 261 Q 195 269 209 260" fill="none" stroke="#8f394c" stroke-width="2.6" stroke-linecap="round" />
+    <path d="M 190 267 Q 196 270 202 267" fill="none" stroke="#f4a2b8" stroke-width="1.6" stroke-linecap="round" opacity="0.8" />
+
+    <use href="#rigFrontHairAndGear" />
+
+    <!-- Right Arm Raised: Hand Lightly Touching Right DJ Earcup (Classic DJ Idol Pose) -->
+    <g id="p1ArmRight">
+      <!-- Forearm Sleeve rising toward earcup -->
+      <path d="M 288 420 C 315 385, 344 320, 326 248 L 294 256 C 302 315, 284 368, 262 405 Z" fill="#21193d" stroke="#090612" stroke-width="2.8" stroke-linejoin="round" />
+      <!-- Neon Cuff at Wrist -->
+      <path d="M 292 258 L 328 248" stroke="#f72585" stroke-width="5" stroke-linecap="round" />
+      <path d="M 292 253 L 328 243" stroke="#00f5d4" stroke-width="2.2" stroke-linecap="round" />
+      <!-- Delicate Anime Hand & Fingers resting on Right Earcup -->
+      <path d="M 298 250 C 292 234, 294 214, 302 200 C 308 194, 314 198, 312 208 C 318 196, 325 200, 321 212 C 327 204, 332 210, 326 222 C 324 234, 322 244, 324 250 Z" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2.2" stroke-linejoin="round" />
+      <!-- Fingerless DJ Glove Accent -->
+      <path d="M 295 248 C 296 234, 318 230, 325 244 L 324 252 L 296 254 Z" fill="#161029" stroke="#00f5d4" stroke-width="1.5" />
+    </g>
+
+    <text x="200" y="565" text-anchor="middle" fill="#cbd5e1" font-family="sans-serif" font-size="13" font-weight="bold">Pose Dasar 3/4 + Tangan di Earcup</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- PANEL 2: HAPPY / HYPE SURGE (^ ^ Eyes + Cat Mouth + Peace Sign Hand)  -->
+  <!-- ===================================================================== -->
+  <g transform="translate(400, 20)">
+    <g transform="translate(24, 12)">
+      <rect x="0" y="0" width="215" height="28" fill="#00f5d4" stroke="#000000" stroke-width="2" transform="skewX(-14)" />
+      <text x="14" y="19" fill="#090612" font-family="sans-serif" font-size="12" font-weight="900" letter-spacing="1">02 // HAPPY + PEACE SIGN</text>
+    </g>
+
+    <g transform="rotate(2 200 300)">
+      <use href="#rigBackHair" />
+      <use href="#rigTorsoAndNeck" />
+      <use href="#rigHeadBase" />
+
+      <!-- Extra Rosy Blush for Happy State -->
+      <ellipse cx="142" cy="236" rx="28" ry="15" fill="url(#blushGrad)" />
+      <ellipse cx="252" cy="236" rx="26" ry="14" fill="url(#blushGrad)" />
+
+      <!-- Joyful Arched Anime Eyes (^ ^) with Lash Wing -->
+      <path d="M 126 208 C 138 186, 168 186, 178 208" fill="none" stroke="#1d0c2e" stroke-width="5" stroke-linecap="round" />
+      <path d="M 126 206 L 118 200 M 132 196 L 126 189" stroke="#1d0c2e" stroke-width="2.6" stroke-linecap="round" />
+      <path d="M 218 208 C 228 186, 258 186, 270 208" fill="none" stroke="#1d0c2e" stroke-width="5" stroke-linecap="round" />
+      <path d="M 270 206 L 278 200 M 264 196 L 270 189" stroke="#1d0c2e" stroke-width="2.6" stroke-linecap="round" />
+
+      <!-- High Cheerful Brows -->
+      <path d="M 130 160 Q 154 150 176 160" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+      <path d="M 220 160 Q 242 150 264 160" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+
+      <!-- Open Happy Anime Mouth + Cute Little Fang + Tongue -->
+      <path d="M 178 256 Q 187 262 195 256 Q 204 262 213 256 C 216 280, 175 280, 178 256 Z" fill="#7a1c30" stroke="#3d0e19" stroke-width="2.2" stroke-linejoin="round" />
+      <path d="M 183 268 Q 195 261 208 268 C 205 278, 186 278, 183 268 Z" fill="#ff7597" />
+      <!-- Cute anime fang (yaeba) -->
+      <polygon points="205,258 209,265 212,258" fill="#ffffff" />
+
+      <use href="#rigFrontHairAndGear" />
+
+      <!-- Left Arm Making Energetic Peace Sign (V-Sign) Near Cheek -->
+      <g id="p2PeaceArm">
+        <path d="M 72 440 C 56 385, 64 320, 96 276 L 126 290 C 104 332, 98 385, 110 435 Z" fill="#21193d" stroke="#090612" stroke-width="2.8" stroke-linejoin="round" />
+        <path d="M 93 278 L 127 292" stroke="#00f5d4" stroke-width="4.5" stroke-linecap="round" />
+        <!-- Peace Sign Hand (Index & Middle extended in V) -->
+        <g transform="translate(112, 266) rotate(-14)">
+          <!-- V-Fingers -->
+          <path d="M -6 4 L -14 -28 C -15 -34, -7 -36, -5 -30 L 2 -2 Z" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2" />
+          <path d="M 4 2 L 14 -30 C 16 -36, 24 -33, 21 -26 L 12 4 Z" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2" />
+          <!-- Palm & curled fingers -->
+          <rect x="-12" y="-2" width="28" height="24" rx="10" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2.2" />
+          <ellipse cx="7" cy="6" rx="8" ry="5" fill="#ffe0cf" stroke="#2b142c" stroke-width="1.8" />
+          <!-- Fingerless glove back -->
+          <path d="M -11 10 L 15 10 L 14 22 L -10 22 Z" fill="#161029" stroke="#f72585" stroke-width="1.5" />
+        </g>
+      </g>
+
+      <!-- Floating Musical Sparkles FX -->
+      <text x="62" y="165" font-size="26" fill="#00f5d4" filter="url(#neonGlow)">♪</text>
+      <text x="320" y="145" font-size="22" fill="#f72585" filter="url(#neonGlow)">✦</text>
+      <text x="335" y="195" font-size="18" fill="#00f5d4">♫</text>
+    </g>
+
+    <text x="200" y="565" text-anchor="middle" fill="#cbd5e1" font-family="sans-serif" font-size="13" font-weight="bold">Ekspresi Happy / Peace Sign + Yaeba</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- PANEL 3: POUT / NGAMBEK (Poke-Spam: Puffed Cheek + Crossed Arms)      -->
+  <!-- ===================================================================== -->
+  <g transform="translate(800, 20)">
+    <g transform="translate(24, 12)">
+      <rect x="0" y="0" width="215" height="28" fill="#f72585" stroke="#ffffff" stroke-width="2" transform="skewX(-14)" />
+      <text x="14" y="19" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="900" letter-spacing="1">03 // POUT (NGAMBEK)</text>
+    </g>
+
+    <!-- Head turned away slightly in a huff -->
+    <g transform="rotate(-3.5 200 300)">
+      <use href="#rigBackHair" />
+      <use href="#rigTorsoAndNeck" />
+      <use href="#rigHeadBase" />
+
+      <!-- Puffed Out Left Cheek Bulge (Classic Anime Pout Silhouette) -->
+      <path d="M 116 218 C 96 226, 96 258, 124 264" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2.6" stroke-linecap="round" />
+      <path d="M 122 228 C 110 236, 110 250, 122 256" fill="none" stroke="#ff5c8a" stroke-width="2" stroke-linecap="round" opacity="0.75" />
+      <!-- Extra Flustered Blush -->
+      <ellipse cx="136" cy="238" rx="30" ry="16" fill="url(#blushGrad)" />
+      <ellipse cx="252" cy="238" rx="26" ry="14" fill="url(#blushGrad)" />
+
+      <!-- Half-Lidded Side-Glance Eyes (Looking away annoyed/embarrassed) -->
+      <g>
+        <use href="#detailedEyeLeft" transform="translate(-5, 0)" />
+        <use href="#detailedEyeRight" transform="translate(-5, 0)" />
+        <!-- Heavy Flat Upper Eyelids covering top 35% of iris (Jitome / Pout look) -->
+        <path d="M 124 182 L 182 190 L 181 203 L 124 198 Z" fill="url(#skinBase)" />
+        <path d="M 124 197 L 181 203" stroke="#190c26" stroke-width="4.2" stroke-linecap="round" />
+        <path d="M 214 190 L 270 182 L 270 198 L 214 203 Z" fill="url(#skinBase)" />
+        <path d="M 214 203 L 270 197" stroke="#190c26" stroke-width="4.2" stroke-linecap="round" />
+      </g>
+
+      <!-- Furrowed Angled Brows -->
+      <path d="M 132 162 L 178 176" fill="none" stroke="#2a143d" stroke-width="3.6" stroke-linecap="round" />
+      <path d="M 262 162 L 216 176" fill="none" stroke="#2a143d" stroke-width="3.6" stroke-linecap="round" />
+
+      <!-- Tight Squiggly Pout Mouth ( desplazado toward puffed cheek ) -->
+      <path d="M 176 262 Q 186 256 194 263 Q 202 268 208 261" fill="none" stroke="#7a283b" stroke-width="2.8" stroke-linecap="round" />
+
+      <use href="#rigFrontHairAndGear" />
+
+      <!-- Crossed Arms over Chest ("Hmph!" Pose) -->
+      <g id="p3CrossedArms">
+        <path d="M 92 435 C 120 412, 235 415, 292 442 L 284 482 C 225 462, 125 460, 86 476 Z" fill="#231b42" stroke="#090612" stroke-width="2.8" stroke-linejoin="round" />
+        <path d="M 108 456 C 165 432, 255 435, 304 462 L 292 496 C 240 478, 155 476, 102 490 Z" fill="#18122e" stroke="#090612" stroke-width="2.8" stroke-linejoin="round" />
+        <path d="M 140 436 L 255 442" stroke="#f72585" stroke-width="2.5" stroke-linecap="round" />
+      </g>
+
+      <!-- Anime Anger Vein Symbol (💢) & Huff Puff -->
+      <g transform="translate(295, 105)" stroke="#ff2a5f" stroke-width="3.2" fill="none" stroke-linecap="round">
+        <path d="M 0 12 Q 12 12 12 0 M 18 0 Q 18 12 30 12 M 30 18 Q 18 18 18 30 M 12 30 Q 12 18 0 18" />
+      </g>
+      <path d="M 78 242 C 62 238, 58 256, 74 256 C 64 266, 78 276, 88 264" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" opacity="0.75" />
+    </g>
+
+    <text x="200" y="565" text-anchor="middle" fill="#cbd5e1" font-family="sans-serif" font-size="13" font-weight="bold">Ngambek (Poke Spam ≥6x): Pipi Gembung</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- PANEL 4: GALAU / MELANCHOLY (Droopy Brows + Teary Eyes + Heart Hands) -->
+  <!-- ===================================================================== -->
+  <g transform="translate(1200, 20)">
+    <g transform="translate(24, 12)">
+      <rect x="0" y="0" width="215" height="28" fill="#4ea8de" stroke="#ffffff" stroke-width="2" transform="skewX(-14)" />
+      <text x="14" y="19" fill="#090612" font-family="sans-serif" font-size="12" font-weight="900" letter-spacing="1">04 // GALAU (TEARY)</text>
+    </g>
+
+    <g transform="translate(0, 4)">
+      <use href="#rigBackHair" />
+      <use href="#rigTorsoAndNeck" />
+      <use href="#rigHeadBase" />
+
+      <!-- Soft Melancholy Eyes with Shimmering Tears at Lower Lid -->
+      <use href="#detailedEyeLeft" />
+      <use href="#detailedEyeRight" />
+      <!-- Glossy Waterline Tear Droplets -->
+      <path d="M 134 219 Q 155 228 175 219 Q 176 226 168 228 Q 152 231 134 224 Z" fill="#7dd3fc" opacity="0.85" />
+      <circle cx="171" cy="225" r="4" fill="#bae6fd" />
+      <circle cx="170" cy="224" r="1.5" fill="#ffffff" />
+      <path d="M 221 219 Q 241 228 261 219 Q 262 226 254 228 Q 238 231 221 224 Z" fill="#7dd3fc" opacity="0.85" />
+      <circle cx="226" cy="225" r="3.8" fill="#bae6fd" />
+      <circle cx="225" cy="224" r="1.5" fill="#ffffff" />
+
+      <!-- Worried / Empathetic Slanted Brows -->
+      <path d="M 130 176 Q 154 170 176 160" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+      <path d="M 220 160 Q 242 170 264 176" fill="none" stroke="#2a143d" stroke-width="3.2" stroke-linecap="round" />
+
+      <!-- Soft Trembling Melancholy Mouth -->
+      <path d="M 184 266 Q 196 259 208 266" fill="none" stroke="#8f394c" stroke-width="2.4" stroke-linecap="round" />
+
+      <use href="#rigFrontHairAndGear" />
+
+      <!-- Both Hands Clutched Together Near Chest (Empathetic / Heartfelt Pose) -->
+      <g id="p4ClaspedHands">
+        <path d="M 96 475 C 110 420, 146 382, 182 368 L 198 394 C 168 412, 142 442, 134 485 Z" fill="#21193d" stroke="#090612" stroke-width="2.8" />
+        <path d="M 304 475 C 290 420, 254 382, 218 368 L 202 394 C 232 412, 258 442, 266 485 Z" fill="#21193d" stroke="#090612" stroke-width="2.8" />
+        <!-- Clasped Hands at Center Chest -->
+        <ellipse cx="200" cy="378" rx="24" ry="16" fill="url(#skinBase)" stroke="#2b142c" stroke-width="2.2" />
+        <path d="M 188 374 Q 200 368 212 374 M 186 381 Q 200 376 214 381" fill="none" stroke="#d4917a" stroke-width="1.8" stroke-linecap="round" />
+      </g>
+
+      <!-- Gentle Raindrop / Blue Heart FX -->
+      <path d="M 82 160 C 82 160, 74 174, 74 180 A 8 8 0 0 0 90 180 C 90 174, 82 160, 82 160 Z" fill="#60a5fa" opacity="0.8" />
+      <path d="M 326 175 C 326 175, 320 186, 320 190 A 6 6 0 0 0 332 190 C 332 186, 326 175, 326 175 Z" fill="#38bdf8" opacity="0.7" />
+    </g>
+
+    <text x="200" y="565" text-anchor="middle" fill="#cbd5e1" font-family="sans-serif" font-size="13" font-weight="bold">Mood Galau: Mata Berkaca-kaca + Tangan di Dada</text>
+  </g>
+</svg>

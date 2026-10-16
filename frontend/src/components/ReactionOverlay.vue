@@ -2,8 +2,11 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { jukeboxClient } from "../shared/ws.ts";
 import { reactionSoundEngine } from "../shared/useReactionSound.ts";
+import { useJukeChanMood } from "../shared/useJukeChanMood.ts";
 import type { MemberRole, ReactionBroadcastItem, ShoutoutBroadcastItem } from "../shared/types.ts";
 import UiIcon from "./UiIcon.vue";
+
+const { onComboSurge: triggerMascotReaction } = useJukeChanMood();
 
 const props = withDefaults(
   defineProps<{
@@ -84,17 +87,64 @@ const confettiPieces = ref<ConfettiPiece[]>([]);
 const shoutouts = ref<ShoutoutBubble[]>([]);
 const milestoneBanner = ref<MilestoneBanner | null>(null);
 
-// Collaborative Room Combo State
-const roomCombo = ref(0);
-const activeEmoji = ref("🔥");
-const contributorsCount = ref(1);
-const lastUpdatedAt = ref(0);
-const decayProgress = ref(100);
+// Collaborative Per-Emoji Room Combo State
+interface ActiveEmojiCombo {
+  emoji: string;
+  combo: number;
+  contributorsCount: number;
+  lastUpdatedAt: number;
+  decayProgress: number;
+}
+const activeCombos = ref<Map<string, ActiveEmojiCombo>>(new Map());
+
+function getDecayWindow(combo: number): number {
+  if (combo >= 80) return 3000;
+  if (combo >= 50) return 2600;
+  if (combo >= 20) return 2200;
+  return 1800;
+}
+
+// Highest active combo in the room right now
+const dominantComboItem = computed(() => {
+  let best: ActiveEmojiCombo | null = null;
+  for (const item of activeCombos.value.values()) {
+    if (item.combo > 0) {
+      if (
+        !best ||
+        item.combo > best.combo ||
+        (item.combo === best.combo && item.lastUpdatedAt > best.lastUpdatedAt)
+      ) {
+        best = item;
+      }
+    }
+  }
+  return best;
+});
+
+const roomCombo = computed(() => dominantComboItem.value?.combo || 0);
+const activeEmoji = computed(() => dominantComboItem.value?.emoji || "🔥");
+const contributorsCount = computed(() => dominantComboItem.value?.contributorsCount || 1);
+const decayProgress = computed(() => dominantComboItem.value?.decayProgress ?? 0);
+
+// Other emojis also active in the room (combo >= 2)
+const otherActiveCombos = computed(() => {
+  const dom = dominantComboItem.value?.emoji;
+  return Array.from(activeCombos.value.values()).filter(
+    (c) => c.emoji !== dom && c.combo >= 2
+  );
+});
 
 // Screen Edge Aura
 const edgeAuraActive = ref(false);
 const edgeAuraColor = ref("rgba(245, 158, 11, 0.4)");
 const isScreenRumble = ref(false);
+
+// Supernova Climax (Combo 100) State
+const supernovaActive = ref(false);
+const supernovaEmoji = ref("🔥");
+const isSuperRumble = ref(false);
+const supernovaBanner = ref<{ emoji: string; text: string } | null>(null);
+const isSupernovaClimaxing = ref(false);
 
 let unsubscribeReaction: (() => void) | null = null;
 let unsubscribeShoutout: (() => void) | null = null;
@@ -102,6 +152,9 @@ let unsubscribeComboReset: (() => void) | null = null;
 let milestoneTimer: ReturnType<typeof setTimeout> | null = null;
 let edgeTimer: ReturnType<typeof setTimeout> | null = null;
 let rumbleTimer: ReturnType<typeof setTimeout> | null = null;
+let superRumbleTimer: ReturnType<typeof setTimeout> | null = null;
+let supernovaBannerTimer: ReturnType<typeof setTimeout> | null = null;
+let supernovaCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let decayInterval: ReturnType<typeof setInterval> | null = null;
 
 function toggleCleanMode() {
@@ -115,6 +168,7 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Hype Flame",
         aura: "rgba(245, 158, 11, 0.45)",
+        bloom: "rgba(245, 158, 11, 0.7)",
         badge: "from-amber-500 to-orange-600",
         secondary: ["✨", "💥", "⚡", "🌟", "🔥"],
       };
@@ -122,6 +176,7 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Warm Love",
         aura: "rgba(244, 63, 94, 0.45)",
+        bloom: "rgba(244, 63, 94, 0.7)",
         badge: "from-rose-500 to-pink-600",
         secondary: ["💕", "💖", "✨", "🌸", "❤️"],
       };
@@ -129,6 +184,7 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Disco Groove",
         aura: "rgba(217, 70, 239, 0.45)",
+        bloom: "rgba(217, 70, 239, 0.7)",
         badge: "from-fuchsia-500 to-purple-600",
         secondary: ["🎶", "🎵", "✨", "🪩", "💃"],
       };
@@ -136,6 +192,7 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Rock Solo",
         aura: "rgba(59, 130, 246, 0.45)",
+        bloom: "rgba(59, 130, 246, 0.7)",
         badge: "from-blue-500 to-cyan-500",
         secondary: ["⚡", "🎵", "🎸", "💥", "🤘"],
       };
@@ -143,13 +200,15 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Mood Dead",
         aura: "rgba(168, 85, 247, 0.45)",
+        bloom: "rgba(168, 85, 247, 0.7)",
         badge: "from-purple-500 to-violet-800",
         secondary: ["☠️", "👻", "💨", "✨", "💀"],
       };
     case "🎉":
       return {
         name: "Party Overload",
-        aura: "rgba(234, 179, 8, 0.5)",
+        aura: "rgba(234, 179, 8, 0.55)",
+        bloom: "rgba(234, 179, 8, 0.75)",
         badge: "from-amber-400 via-pink-500 to-cyan-400",
         secondary: ["🎊", "✨", "🎈", "🌟", "🎉"],
       };
@@ -157,24 +216,52 @@ function getEmojiTheme(emoji: string) {
       return {
         name: "Office Vibe",
         aura: "rgba(99, 102, 241, 0.45)",
+        bloom: "rgba(99, 102, 241, 0.7)",
         badge: "from-indigo-500 to-purple-600",
         secondary: ["✨", "🌟", "💫"],
       };
   }
 }
 
+// Dynamic Ambient Bloom for progressive brightness
+const ambientBloomStyle = computed(() => {
+  if (isCleanMode.value || !dominantComboItem.value || dominantComboItem.value.combo < 2) {
+    return { opacity: 0 };
+  }
+
+  const combo = dominantComboItem.value.combo;
+  const theme = getEmojiTheme(dominantComboItem.value.emoji);
+
+  // Progressive brightness: scale aggressively towards combo 100
+  const normalized = Math.min(combo / 100, 1.0);
+  const opacity = Math.min(0.08 + normalized * 0.74, 0.82);
+  const blurPx = Math.min(40 + normalized * 100, 140);
+  const exposure = normalized * 0.45;
+
+  return {
+    opacity: opacity,
+    "--bloom-color": theme.bloom || theme.aura,
+    "--bloom-blur": `${blurPx}px`,
+    "--bloom-exposure": `${exposure}`,
+  };
+});
+
 const currentTier = computed(() => {
   const c = roomCombo.value;
-  if (c >= 35) return { label: "OFFICE OVERDRIVE! 👑🎉", color: "text-amber-300", glow: "shadow-[0_0_24px_rgba(245,158,11,0.6)]" };
-  if (c >= 20) return { label: "HYPER STREAK! 🚀", color: "text-fuchsia-300", glow: "shadow-[0_0_20px_rgba(217,70,239,0.5)]" };
+  if (c >= 100) return { label: "SUPERNOVA DUAR! 💥👑", color: "text-amber-200", glow: "shadow-[0_0_40px_rgba(255,255,255,0.95)]" };
+  if (c >= 75) return { label: "GODLIKE HYPERDRIVE! ⚡⚡", color: "text-rose-300", glow: "shadow-[0_0_32px_rgba(244,63,94,0.85)]" };
+  if (c >= 50) return { label: "OFFICE OVERDRIVE! 👑🎉", color: "text-amber-300", glow: "shadow-[0_0_28px_rgba(245,158,11,0.75)]" };
+  if (c >= 25) return { label: "MAXIMUM HYPE! 🚀", color: "text-fuchsia-300", glow: "shadow-[0_0_22px_rgba(217,70,239,0.6)]" };
   if (c >= 10) return { label: "ON FIRE! ⚡", color: "text-amber-400", glow: "shadow-[0_0_16px_rgba(245,158,11,0.4)]" };
   if (c >= 5) return { label: "HEATING UP 🔥", color: "text-orange-400", glow: "shadow-[0_0_12px_rgba(249,115,22,0.3)]" };
   return { label: "VIBING 🎶", color: "text-indigo-300", glow: "" };
 });
 
 function getMilestoneText(emoji: string, combo: number): string {
-  if (combo >= 50) return `LEGENDARY COMBO x${combo}! 🚀`;
-  if (combo >= 25) return `MAXIMUM HYPE x${combo}! ⚡`;
+  if (combo >= 100) return `💥 SUPERNOVA COMBO x100! DUAR! 💥`;
+  if (combo >= 75) return `INSANE GODLIKE x${combo}! ⚡⚡`;
+  if (combo >= 50) return `OFFICE OVERDRIVE x${combo}! 👑`;
+  if (combo >= 25) return `MAXIMUM HYPE x${combo}! 🚀`;
   if (combo >= 15) return `SUPER GROOVE x${combo}! ✨`;
   if (combo >= 10) return `ON FIRE x${combo}! 🔥`;
   return `COMBO x${combo}!`;
@@ -206,18 +293,26 @@ function spawnRadialConfetti(count = 12) {
 }
 
 function spawnReaction(item: ReactionBroadcastItem) {
+  triggerMascotReaction(item.combo, item.emoji);
   if (isCleanMode.value) return;
 
   const theme = getEmojiTheme(item.emoji);
 
-  // 1. Update Collaborative Room Combo state
-  roomCombo.value = item.combo;
-  activeEmoji.value = item.emoji;
-  contributorsCount.value = item.contributorsCount || 1;
-  lastUpdatedAt.value = item.timestamp || Date.now();
-  decayProgress.value = 100;
+  // 1. Update Per-Emoji Collaborative Room Combo state
+  const existing = activeCombos.value.get(item.emoji) || {
+    emoji: item.emoji,
+    combo: 0,
+    contributorsCount: 1,
+    lastUpdatedAt: 0,
+    decayProgress: 100,
+  };
+  existing.combo = item.combo;
+  existing.contributorsCount = item.contributorsCount || 1;
+  existing.lastUpdatedAt = item.timestamp || Date.now();
+  existing.decayProgress = 100;
+  activeCombos.value.set(item.emoji, existing);
 
-  // 2. Play distinct emoji sound
+  // 2. Play distinct emoji sound (or supernova sound if >= 300)
   if (props.allowSound) {
     reactionSoundEngine.playSound(item.emoji, item.combo);
   }
@@ -254,7 +349,7 @@ function spawnReaction(item: ReactionBroadcastItem) {
     particles.value = particles.value.filter((p) => p.id !== id);
   }, duration * 1000);
 
-  // 5. Secondary Sparkle Particles (3 - 5 micro particles)
+  // 5. Secondary Sparkle Particles (3 - 6 micro particles)
   const secCount = Math.min(3 + Math.floor(item.combo / 5), 6);
   for (let i = 0; i < secCount; i++) {
     const glyph = theme.secondary[Math.floor(Math.random() * theme.secondary.length)];
@@ -277,12 +372,50 @@ function spawnReaction(item: ReactionBroadcastItem) {
     secondaryParticles.value.splice(0, secondaryParticles.value.length - 40);
   }
 
-  // 6. Radial Confetti Cannon on High Combos (combo >= 8)
+  // 6. SUPERNOVA CLIMAX COMBO 100 ("DUAR!")
+  if (item.combo >= 100 || item.isClimax) {
+    if (isSupernovaClimaxing.value) return;
+
+    isSupernovaClimaxing.value = true;
+    emit("milestone", { combo: 100, emoji: item.emoji });
+
+    supernovaActive.value = true;
+    supernovaEmoji.value = item.emoji;
+    isSuperRumble.value = true;
+
+    // Massive 85-particle fireworks shockwave
+    spawnRadialConfetti(85);
+
+    if (superRumbleTimer) clearTimeout(superRumbleTimer);
+    superRumbleTimer = setTimeout(() => {
+      isSuperRumble.value = false;
+    }, 1000);
+
+    if (supernovaBannerTimer) clearTimeout(supernovaBannerTimer);
+    supernovaBanner.value = {
+      emoji: item.emoji,
+      text: `SUPERNOVA COMBO 100! 💥 DUAR!`,
+    };
+    supernovaBannerTimer = setTimeout(() => {
+      supernovaBanner.value = null;
+    }, 2800);
+
+    if (supernovaCooldownTimer) clearTimeout(supernovaCooldownTimer);
+    supernovaCooldownTimer = setTimeout(() => {
+      supernovaActive.value = false;
+      activeCombos.value.delete(item.emoji);
+      isSupernovaClimaxing.value = false;
+    }, 2800);
+
+    return;
+  }
+
+  // 7. Radial Confetti Cannon on High Combos (combo >= 8)
   if (item.combo >= 8) {
     spawnRadialConfetti(item.combo >= 20 ? 16 : 10);
   }
 
-  // 7. Milestone Banner & Screen Rumble (x10, x15, x20, x25...)
+  // 8. Milestone Banner & Screen Rumble (x10, x15, x20, x25...)
   if (item.isMilestone || (item.combo >= 10 && item.combo % 5 === 0)) {
     emit("milestone", { combo: item.combo, emoji: item.emoji });
 
@@ -326,14 +459,16 @@ function spawnShoutout(item: ShoutoutBroadcastItem) {
 }
 
 onMounted(() => {
-  // Decay progress timer loop (1800ms decay window)
+  // Decay progress timer loop per active emoji combo
   decayInterval = setInterval(() => {
-    if (roomCombo.value > 0 && lastUpdatedAt.value > 0) {
-      const elapsed = Date.now() - lastUpdatedAt.value;
-      const pct = Math.max(0, 100 - (elapsed / 1800) * 100);
-      decayProgress.value = pct;
-      if (elapsed > 1900) {
-        roomCombo.value = 0;
+    const now = Date.now();
+    for (const [emoji, item] of activeCombos.value.entries()) {
+      const decayWindow = getDecayWindow(item.combo);
+      const elapsed = now - item.lastUpdatedAt;
+      const pct = Math.max(0, 100 - (elapsed / decayWindow) * 100);
+      item.decayProgress = pct;
+      if (elapsed > decayWindow + 150) {
+        activeCombos.value.delete(emoji);
       }
     }
   }, 40);
@@ -346,9 +481,16 @@ onMounted(() => {
     spawnShoutout(item);
   });
 
-  unsubscribeComboReset = jukeboxClient.onComboReset(() => {
-    roomCombo.value = 0;
-    decayProgress.value = 0;
+  unsubscribeComboReset = jukeboxClient.onComboReset((_lastCombo, emoji) => {
+    if (emoji) {
+      activeCombos.value.delete(emoji);
+      if (supernovaEmoji.value === emoji) {
+        isSupernovaClimaxing.value = false;
+      }
+    } else {
+      activeCombos.value.clear();
+      isSupernovaClimaxing.value = false;
+    }
   });
 });
 
@@ -359,13 +501,25 @@ onBeforeUnmount(() => {
   if (milestoneTimer) clearTimeout(milestoneTimer);
   if (edgeTimer) clearTimeout(edgeTimer);
   if (rumbleTimer) clearTimeout(rumbleTimer);
+  if (superRumbleTimer) clearTimeout(superRumbleTimer);
+  if (supernovaBannerTimer) clearTimeout(supernovaBannerTimer);
+  if (supernovaCooldownTimer) clearTimeout(supernovaCooldownTimer);
   if (decayInterval) clearInterval(decayInterval);
 });
 </script>
 
 <template>
   <div class="reaction-system-root">
-    <!-- 1. Full-Screen Edge Neon Aura Vignette (Flashes in rhythm on combo hits) -->
+    <!-- 1. Progressive Ambient Bloom Layer with Smooth Cooldown Fade (Anti-Instant Cut) -->
+    <transition name="bloom-cooldown">
+      <div
+        v-if="!isCleanMode && roomCombo >= 2"
+        class="combo-ambient-bloom fixed inset-0 pointer-events-none z-30"
+        :style="ambientBloomStyle"
+      ></div>
+    </transition>
+
+    <!-- 2. Full-Screen Edge Neon Aura Vignette (Flashes in rhythm on combo hits) -->
     <transition name="aura-fade">
       <div
         v-if="edgeAuraActive && !isCleanMode"
@@ -374,10 +528,49 @@ onBeforeUnmount(() => {
       ></div>
     </transition>
 
-    <!-- 2. Main Reaction Floating Overlay Stage -->
+    <!-- 3. Supernova Climax Flash & Shockwave Stage (Combo 100 DUAR) -->
+    <transition name="supernova-fade">
+      <div
+        v-if="supernovaActive && !isCleanMode"
+        class="supernova-screen-climax fixed inset-0 pointer-events-none z-45 flex items-center justify-center overflow-hidden"
+      >
+        <div class="supernova-flash-layer absolute inset-0"></div>
+        <div class="supernova-shockwave-ring-1 absolute"></div>
+        <div class="supernova-shockwave-ring-2 absolute"></div>
+        <div class="supernova-shockwave-ring-3 absolute"></div>
+        <div class="supernova-starburst absolute"></div>
+      </div>
+    </transition>
+
+    <!-- 4. Supernova Combo 300 Grand Celebration Banner -->
+    <transition name="supernova-banner">
+      <div
+        v-if="supernovaBanner && !isCleanMode"
+        class="supernova-banner-container fixed inset-x-0 top-1/4 z-50 pointer-events-none flex justify-center px-4"
+      >
+        <div class="supernova-banner px-6 sm:px-10 py-5 sm:py-6 rounded-3xl bg-slate-950/90 border-2 border-amber-300/80 backdrop-blur-3xl shadow-[0_0_80px_rgba(245,158,11,0.8),inset_0_1px_rgba(255,255,255,0.4)] flex flex-col items-center text-center gap-2 animate-bounce">
+          <div class="flex items-center gap-3">
+            <span class="text-5xl sm:text-7xl animate-spin-slow select-none">{{ supernovaBanner.emoji }}</span>
+            <span class="text-4xl sm:text-6xl select-none">💥</span>
+            <span class="text-5xl sm:text-7xl animate-spin-slow select-none">{{ supernovaBanner.emoji }}</span>
+          </div>
+          <span class="text-xs sm:text-sm font-black uppercase tracking-widest text-amber-300 drop-shadow">
+            KOLABORASI KANTOR MELEDAK!
+          </span>
+          <span class="text-2xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-rose-400 to-yellow-200 tracking-tight drop-shadow-lg">
+            {{ supernovaBanner.text }}
+          </span>
+          <span class="text-xs font-semibold text-slate-300">
+            Cooldown aktif... bersiap untuk ronde hype berikutnya!
+          </span>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 5. Main Reaction Floating Overlay Stage -->
     <div
       class="reaction-overlay fixed z-50 pointer-events-none flex flex-col items-end"
-      :class="[positionClass, { 'rumble-active': isScreenRumble }]"
+      :class="[positionClass, { 'rumble-active': isScreenRumble, 'super-rumble-active': isSuperRumble }]"
     >
       <!-- Clean View Toggle Pill -->
       <div class="pointer-events-auto mb-2 opacity-60 hover:opacity-100 transition-opacity">
@@ -432,6 +625,22 @@ onBeforeUnmount(() => {
             <div v-if="contributorsCount > 1" class="flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
               <span>👥</span>
               <span>{{ contributorsCount }} Orang Ikut Hype!</span>
+            </div>
+
+            <!-- Rival Active Combos Pill List -->
+            <div
+              v-if="otherActiveCombos.length > 0"
+              class="flex flex-wrap items-center gap-1 pt-1 border-t border-white/10 text-[10px] text-slate-300"
+            >
+              <span class="text-slate-400 font-bold">Juga hype:</span>
+              <span
+                v-for="c in otherActiveCombos"
+                :key="c.emoji"
+                class="px-1.5 py-0.2 rounded-md bg-white/10 font-mono font-bold text-white flex items-center gap-0.5"
+              >
+                <span>{{ c.emoji }}</span>
+                <span>x{{ c.combo }}</span>
+              </span>
             </div>
 
             <!-- Decay Gauge Bar -->
@@ -722,5 +931,130 @@ onBeforeUnmount(() => {
 .surge-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-8px);
+}
+
+/* Progressive Ambient Bloom Layer with Smooth Cooldown Fade (Anti-Instant Cut) */
+.bloom-cooldown-enter-active {
+  transition: opacity 300ms ease-out;
+}
+.bloom-cooldown-leave-active {
+  transition: opacity 1600ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.bloom-cooldown-enter-from,
+.bloom-cooldown-leave-to {
+  opacity: 0 !important;
+}
+
+.combo-ambient-bloom {
+  background: radial-gradient(circle at center, var(--bloom-color, rgba(245, 158, 11, 0.6)) 0%, transparent 68%),
+              radial-gradient(circle at top right, var(--bloom-color, rgba(245, 158, 11, 0.45)) 0%, transparent 55%),
+              radial-gradient(circle at bottom left, var(--bloom-color, rgba(245, 158, 11, 0.45)) 0%, transparent 55%);
+  box-shadow: inset 0 0 var(--bloom-blur, 80px) var(--bloom-color, rgba(245, 158, 11, 0.6));
+  mix-blend-mode: screen;
+  filter: brightness(calc(1 + var(--bloom-exposure, 0)));
+  will-change: opacity, box-shadow, filter;
+}
+
+/* Super Screen Rumble on Supernova (Combo 100) */
+.super-rumble-active {
+  animation: superRumble 1000ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes superRumble {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  10%, 90% { transform: translate3d(-8px, 6px, 0) rotate(-0.8deg); }
+  20%, 80% { transform: translate3d(8px, -6px, 0) rotate(0.8deg); }
+  30%, 50%, 70% { transform: translate3d(-10px, -4px, 0) rotate(-1.2deg); }
+  40%, 60% { transform: translate3d(10px, 4px, 0) rotate(1.2deg); }
+}
+
+/* Supernova Climax Flash & Shockwaves */
+.supernova-screen-climax {
+  z-index: 55;
+}
+
+.supernova-flash-layer {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 1) 0%, rgba(254, 240, 138, 0.9) 35%, rgba(245, 158, 11, 0.6) 75%, transparent 100%);
+  animation: flashBurst 1000ms cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes flashBurst {
+  0% { opacity: 0; transform: scale(0.6); }
+  15% { opacity: 1; transform: scale(1.02); }
+  50% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+.supernova-shockwave-ring-1 {
+  width: 120px;
+  height: 120px;
+  border-radius: 9999px;
+  border: 6px solid rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 60px rgba(245, 158, 11, 1), inset 0 0 40px rgba(245, 158, 11, 1);
+  animation: shockwaveExpand 1400ms cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+.supernova-shockwave-ring-2 {
+  width: 120px;
+  height: 120px;
+  border-radius: 9999px;
+  border: 4px dashed rgba(251, 191, 36, 0.9);
+  box-shadow: 0 0 50px rgba(236, 72, 153, 0.8);
+  animation: shockwaveExpand 1700ms 140ms cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+.supernova-shockwave-ring-3 {
+  width: 120px;
+  height: 120px;
+  border-radius: 9999px;
+  border: 2px solid rgba(244, 63, 94, 0.8);
+  box-shadow: 0 0 70px rgba(244, 63, 94, 0.8);
+  animation: shockwaveExpand 2000ms 280ms cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+.supernova-starburst {
+  width: 80px;
+  height: 80px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ffffff 0%, #fbbf24 60%, transparent 100%);
+  filter: blur(4px);
+  animation: starburstPop 900ms cubic-bezier(0.15, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes starburstPop {
+  0% { transform: scale(0.1); opacity: 1; }
+  40% { transform: scale(3.5); opacity: 0.9; }
+  100% { transform: scale(8); opacity: 0; }
+}
+
+@keyframes shockwaveExpand {
+  0% { transform: scale(0.1); opacity: 1; }
+  60% { opacity: 0.9; }
+  100% { transform: scale(38); opacity: 0; }
+}
+
+.supernova-fade-enter-active,
+.supernova-fade-leave-active {
+  transition: opacity 400ms ease;
+}
+.supernova-fade-enter-from,
+.supernova-fade-leave-to {
+  opacity: 0;
+}
+
+/* Supernova Banner Transitions */
+.supernova-banner-enter-active {
+  transition: all 450ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.supernova-banner-leave-active {
+  transition: all 550ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.supernova-banner-enter-from {
+  opacity: 0;
+  transform: scale(0.55) translateY(-50px);
+}
+.supernova-banner-leave-to {
+  opacity: 0;
+  transform: scale(0.85) translateY(40px);
 }
 </style>

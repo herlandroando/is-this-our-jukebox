@@ -15,7 +15,11 @@ const PENTATONIC_SCALE = [
 
 class ReactionSoundEngine {
   private ctx: AudioContext | null = null;
-  public isSoundEnabled = ref(localStorage.getItem("jukebox_reaction_sound") !== "false");
+  public isSoundEnabled = ref(
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("jukebox_reaction_sound") !== "false"
+      : true
+  );
 
   private getContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -33,12 +37,16 @@ class ReactionSoundEngine {
 
   public toggleSound() {
     this.isSoundEnabled.value = !this.isSoundEnabled.value;
-    localStorage.setItem("jukebox_reaction_sound", String(this.isSoundEnabled.value));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("jukebox_reaction_sound", String(this.isSoundEnabled.value));
+    }
   }
 
   public setSound(enabled: boolean) {
     this.isSoundEnabled.value = enabled;
-    localStorage.setItem("jukebox_reaction_sound", String(enabled));
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("jukebox_reaction_sound", String(enabled));
+    }
   }
 
   /**
@@ -46,14 +54,23 @@ class ReactionSoundEngine {
    * pitch-shifting up along the pentatonic scale as roomCombo ascends.
    */
   public playSound(emoji: string, combo = 1) {
-    // Subtle mobile tactile vibration
+    // Tactile mobile vibration
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       try {
-        navigator.vibrate(combo >= 10 ? [15, 30, 20] : 10);
+        if (combo >= 100) {
+          navigator.vibrate([90, 60, 140, 70, 320]);
+        } else {
+          navigator.vibrate(combo >= 10 ? [15, 30, 20] : 10);
+        }
       } catch {}
     }
 
     if (!this.isSoundEnabled.value) return;
+
+    if (combo >= 100) {
+      this.playSupernovaExplosion(emoji);
+      return;
+    }
 
     try {
       const ctx = this.getContext();
@@ -96,6 +113,252 @@ class ReactionSoundEngine {
   /** Backward-compatible helper */
   public playPop(combo = 1) {
     this.playSound("🔥", combo);
+  }
+
+  /**
+   * Juke-chan Mascot Interactive Chime on Direct Tap / Interaction
+   */
+  public playJukeChanChime() {
+    if (!this.isSoundEnabled.value) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const notes = [587.33, 739.99, 880]; // D5, F#5, A5 arpeggio
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + i * 0.06);
+        gain.gain.setValueAtTime(0.08, now + i * 0.06);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.32);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.06);
+        osc.stop(now + i * 0.06 + 0.35);
+      });
+    } catch {}
+  }
+
+  /**
+   * Mood Transition Jingle when Mood auto-detection switches
+   */
+  public playMoodJingle(mood: "hype" | "lofi" | "romance" | "galau") {
+    if (!this.isSoundEnabled.value) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const chords: Record<string, number[]> = {
+        hype: [440, 554.37, 659.25, 880], // A Major synth energy
+        lofi: [329.63, 392.0, 493.88, 587.33], // E minor 7 mellow
+        romance: [349.23, 440.0, 523.25, 659.25], // F Major 7 sweet
+        galau: [293.66, 349.23, 440.0, 523.25], // D minor 7 acoustic
+      };
+      const notes = chords[mood] || chords.hype;
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = mood === "hype" ? "sawtooth" : "sine";
+        osc.frequency.setValueAtTime(freq, now + i * 0.05);
+        gain.gain.setValueAtTime(0.07, now + i * 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.36);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.05);
+        osc.stop(now + i * 0.05 + 0.4);
+      });
+    } catch {}
+  }
+
+  private lastBlipTimeMs = 0;
+
+  /**
+   * Animal-Crossing / Undertale style cute synth voice blip per character during typewriter speech.
+   * Respects isSoundEnabled mute setting and throttles rapid characters.
+   */
+  public playVoiceBlip(
+    mood: "hype" | "lofi" | "romance" | "galau",
+    char: string
+  ) {
+    if (!this.isSoundEnabled.value) return;
+    if (!char || /\s/.test(char)) return;
+
+    const nowMs = performance.now();
+    if (nowMs - this.lastBlipTimeMs < 46) return;
+    this.lastBlipTimeMs = nowMs;
+
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const basePitchMap: Record<string, number> = {
+        hype: 690,
+        romance: 640,
+        lofi: 520,
+        galau: 460,
+      };
+      const base = basePitchMap[mood] ?? 600;
+      const code = char.charCodeAt(0);
+      const semitoneOffset = ((code % 7) - 3) * 18;
+      const isVowel = /[aiueoAIUEO]/.test(char);
+      const freq = Math.max(320, base + semitoneOffset + (isVowel ? 28 : 0));
+
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = mood === "hype" || mood === "romance" ? "triangle" : "sine";
+      osc.frequency.setValueAtTime(freq * 0.92, now);
+      osc.frequency.exponentialRampToValueAtTime(freq * 1.06, now + 0.028);
+
+      const dur = isVowel ? 0.042 : 0.03;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.032, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.005);
+    } catch {}
+  }
+
+  /**
+   * Distinct cute tactile audio feedback per body hit-zone
+   */
+  public playZoneSfx(zone: "head" | "cheek" | "headphone" | "ahoge" | "pout") {
+    if (!this.isSoundEnabled.value) return;
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      if (zone === "ahoge") {
+        // Springy boing pitch bend
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+      } else if (zone === "cheek") {
+        // Cute squishy pop
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.08);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.11);
+      } else if (zone === "pout") {
+        // Comedic low huff
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(170, now + 0.16);
+        gain.gain.setValueAtTime(0.045, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.19);
+      } else {
+        this.playJukeChanChime();
+      }
+    } catch {}
+  }
+
+  /**
+   * Supernova Climax Explosion ("DUAR!"):
+   * Procedural Web Audio DSP sound with deep sub-bass drop (140Hz -> 32Hz),
+   * dense shaped white noise explosion, punchy kick transient, and celebratory sparkles.
+   */
+  public playSupernovaExplosion(emoji = "🔥") {
+    if (!this.isSoundEnabled.value) return;
+
+    try {
+      const ctx = this.getContext();
+      if (!ctx) return;
+
+      const now = ctx.currentTime;
+
+      // 1. Massive Sub-Bass Pitch Drop ("DUUUUUMMM...")
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = "sine";
+      subOsc.frequency.setValueAtTime(160, now);
+      subOsc.frequency.exponentialRampToValueAtTime(28, now + 1.2);
+
+      subGain.gain.setValueAtTime(0.001, now);
+      subGain.gain.linearRampToValueAtTime(0.46, now + 0.02);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 1.9);
+
+      // 2. Punchy Mid Body ("THUD / KABOOM")
+      const punchOsc = ctx.createOscillator();
+      const punchGain = ctx.createGain();
+      punchOsc.type = "triangle";
+      punchOsc.frequency.setValueAtTime(280, now);
+      punchOsc.frequency.exponentialRampToValueAtTime(36, now + 0.32);
+
+      punchGain.gain.setValueAtTime(0.001, now);
+      punchGain.gain.linearRampToValueAtTime(0.32, now + 0.008);
+      punchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+
+      punchOsc.connect(punchGain);
+      punchGain.connect(ctx.destination);
+      punchOsc.start(now);
+      punchOsc.stop(now + 0.52);
+
+      // 3. Dense White Noise Shockwave Explosion ("TSHHHSHHH...")
+      const bufferSize = Math.floor(ctx.sampleRate * 1.4);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.95;
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = "lowpass";
+      noiseFilter.frequency.setValueAtTime(3800, now);
+      noiseFilter.frequency.exponentialRampToValueAtTime(90, now + 1.1);
+      noiseFilter.Q.setValueAtTime(3.6, now);
+
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.001, now);
+      noiseGain.gain.linearRampToValueAtTime(0.38, now + 0.015);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+
+      noise.start(now);
+      noise.stop(now + 1.45);
+
+      // 4. Celebratory Sparkle Cascade
+      this.playMilestoneSparkle(ctx, 880);
+      setTimeout(() => {
+        try {
+          const freshCtx = this.getContext();
+          if (freshCtx) this.playMilestoneSparkle(freshCtx, 1046.5);
+        } catch {}
+      }, 160);
+    } catch {}
   }
 
   // 1. 🔥 Flame: Rising noise sizzle + punchy fast frequency drop
@@ -334,3 +597,4 @@ class ReactionSoundEngine {
 }
 
 export const reactionSoundEngine = new ReactionSoundEngine();
+export const reactionAudio = reactionSoundEngine;

@@ -326,13 +326,13 @@ async function runTests() {
   ws.send(JSON.stringify({ type: "reaction", emoji: "🔥" }));
   await reaction1Promise;
 
-  // Second reaction from another client stacks room combo to 2
+  // Second reaction from another client with the SAME emoji stacks combo to 2 with 2 contributors
   const reaction2Promise = new Promise<void>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       const msg = JSON.parse(event.data);
       if (
         msg.type === "reactionBroadcast" &&
-        msg.emoji === "❤️" &&
+        msg.emoji === "🔥" &&
         msg.combo === 2 &&
         msg.contributorsCount === 2
       ) {
@@ -344,9 +344,31 @@ async function runTests() {
     setTimeout(() => reject(new Error("reaction 2 stacking timeout")), 5000);
   });
 
-  adminWs.send(JSON.stringify({ type: "reaction", emoji: "❤️" }));
+  adminWs.send(JSON.stringify({ type: "reaction", emoji: "🔥" }));
   await reaction2Promise;
-  console.log("[smoke] ✓ Collaborative room combo stacking verified across clients!");
+  console.log("[smoke] ✓ Collaborative matching-emoji combo stacking verified across clients!");
+
+  // Third reaction with DIFFERENT emoji (❤️) has independent combo 1 (not stacked into 🔥)
+  const reaction3Promise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data);
+      if (
+        msg.type === "reactionBroadcast" &&
+        msg.emoji === "❤️" &&
+        msg.combo === 1 &&
+        msg.contributorsCount === 1
+      ) {
+        adminWs.removeEventListener("message", handler);
+        resolve();
+      }
+    };
+    adminWs.addEventListener("message", handler);
+    setTimeout(() => reject(new Error("reaction 3 independent emoji timeout")), 5000);
+  });
+
+  ws.send(JSON.stringify({ type: "reaction", emoji: "❤️" }));
+  await reaction3Promise;
+  console.log("[smoke] ✓ Independent per-emoji isolation verified (no cross-stacking)!");
 
   // Test 18: Shoutout broadcast & rate-limiting
   console.log("[smoke] Test 18: Testing shoutout broadcast & rate-limiting...");

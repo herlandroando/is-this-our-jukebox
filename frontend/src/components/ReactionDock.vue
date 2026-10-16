@@ -2,6 +2,8 @@
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import { jukeboxClient } from "../shared/ws.ts";
 import { reactionSoundEngine } from "../shared/useReactionSound.ts";
+import { useJukeChanMood } from "../shared/useJukeChanMood.ts";
+import JukeChan from "./mascot/JukeChan.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = withDefaults(
@@ -12,6 +14,8 @@ const props = withDefaults(
     compact: false,
   }
 );
+
+const { onComboSurge } = useJukeChanMood();
 
 const PRESET_EMOJIS = ["🔥", "❤️", "💃", "🎸", "💀", "🎉"];
 
@@ -24,8 +28,8 @@ const QUICK_CHIPS = [
   "Gokil lagunya ⚡",
 ];
 
-const currentCombo = ref(0);
-const activeEmoji = ref("");
+const emojiCombos = ref<Record<string, number>>({});
+const lastTappedEmoji = ref("");
 const isShoutoutOpen = ref(false);
 const customShoutout = ref("");
 const isSubmitting = ref(false);
@@ -34,26 +38,30 @@ let unsubscribeReaction: (() => void) | null = null;
 let unsubscribeComboReset: (() => void) | null = null;
 
 function onReactionTap(emoji: string) {
-  const nextEstimatedCombo = currentCombo.value > 0 ? currentCombo.value + 1 : 1;
+  const current = emojiCombos.value[emoji] || 0;
+  const nextEstimatedCombo = Math.min(current + 1, 100);
+  emojiCombos.value[emoji] = nextEstimatedCombo;
+  lastTappedEmoji.value = emoji;
+
   reactionSoundEngine.playSound(emoji, nextEstimatedCombo);
+  onComboSurge(nextEstimatedCombo, emoji);
 
-  // Optimistic feedback
-  currentCombo.value = nextEstimatedCombo;
-  activeEmoji.value = emoji;
-
-  // Send to server (shared room combo is managed on server)
+  // Send to server (shared per-emoji room combo is managed on server)
   jukeboxClient.sendReaction(emoji, nextEstimatedCombo);
 }
 
 onMounted(() => {
   unsubscribeReaction = jukeboxClient.onReaction((item) => {
-    currentCombo.value = item.combo;
-    activeEmoji.value = item.emoji;
+    emojiCombos.value[item.emoji] = item.combo;
+    onComboSurge(item.combo, item.emoji);
   });
 
-  unsubscribeComboReset = jukeboxClient.onComboReset(() => {
-    currentCombo.value = 0;
-    activeEmoji.value = "";
+  unsubscribeComboReset = jukeboxClient.onComboReset((_lastCombo, emoji) => {
+    if (emoji) {
+      delete emojiCombos.value[emoji];
+    } else {
+      emojiCombos.value = {};
+    }
   });
 });
 
@@ -97,6 +105,11 @@ onBeforeUnmount(() => {
     <div
       class="reaction-dock glass-panel px-2 sm:px-3 py-1.5 rounded-2xl flex items-center gap-1 sm:gap-1.5 shadow-xl border-white/10 backdrop-blur-xl"
     >
+      <!-- Mini Juke-chan Companion Avatar -->
+      <div class="mr-0.5 sm:mr-1 shrink-0 flex items-center">
+        <JukeChan size="sm" :showSpeech="false" :interactive="true" />
+      </div>
+
       <!-- Preset Emoji Buttons -->
       <div class="flex items-center gap-0.5 sm:gap-1">
         <button
@@ -106,7 +119,7 @@ onBeforeUnmount(() => {
           class="reaction-btn relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-lg sm:text-xl hover:bg-white/10 active:scale-80 transition-all cursor-pointer"
           :class="{
             'bg-white/15 scale-110 shadow-[0_0_12px_rgba(255,255,255,0.2)]':
-              activeEmoji === emoji && currentCombo > 1,
+              (emojiCombos[emoji] || 0) > 1,
           }"
           :title="`React ${emoji}`"
           @click="onReactionTap(emoji)"
@@ -115,10 +128,10 @@ onBeforeUnmount(() => {
 
           <!-- Active Combo Badge Indicator -->
           <span
-            v-if="activeEmoji === emoji && currentCombo > 1"
+            v-if="(emojiCombos[emoji] || 0) > 1"
             class="combo-pill absolute -top-2.5 -right-1 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-lg pointer-events-none animate-pulse"
           >
-            x{{ currentCombo }}
+            x{{ emojiCombos[emoji] }}
           </span>
         </button>
       </div>

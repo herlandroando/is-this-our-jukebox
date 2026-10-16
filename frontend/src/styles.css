@@ -406,3 +406,96 @@ body {
   transform: scale(1.035);
   transition: all 0.28s var(--ease-spring);
 }
+
+/* ==========================================================================
+   Persona 5 Battle UI Styling Tokens & Utilities
+   ========================================================================== */
+
+/* Slanted transforms */
+.p5-skew {
+  transform: skewX(-12deg) rotate(-2deg);
+}
+
+.p5-skew-lg {
+  transform: skewX(-16deg) rotate(-3deg);
+}
+
+.p5-skew-reverse {
+  transform: skewX(12deg) rotate(2deg);
+}
+
+/* Hard manga comic shadows */
+.p5-shadow-hard {
+  box-shadow: 6px 6px 0px #000000;
+}
+
+.p5-shadow-hard-sm {
+  box-shadow: 3px 3px 0px #000000;
+}
+
+.p5-shadow-hard-lg {
+  box-shadow: 10px 10px 0px #000000;
+}
+
+.p5-shadow-red {
+  box-shadow: 6px 6px 0px #e60012;
+}
+
+.p5-shadow-cyan {
+  box-shadow: 6px 6px 0px #00e5ff;
+}
+
+/* Halftone and speedline comic backdrop */
+.p5-halftone-dots {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+}
+
+.p5-red-glow {
+  box-shadow: 0 0 30px rgba(230, 0, 18, 0.45);
+}
+
+/* Persona 5 Angular Clip-Paths */
+.p5-clip-banner {
+  clip-path: polygon(0% 0%, 96% 0%, 100% 100%, 4% 100%);
+}
+
+.p5-clip-chevron-right {
+  clip-path: polygon(0% 0%, 92% 0%, 100% 50%, 92% 100%, 0% 100%, 4% 50%);
+}
+
+.p5-clip-badge {
+  clip-path: polygon(10% 0%, 100% 0%, 90% 100%, 0% 100%);
+}
+
+/* Controller prompt buttons */
+.p5-btn-prompt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  border-radius: 9999px;
+  line-height: 1;
+}
+
+/* Comic Speech Bubble with Hard Edges */
+.p5-comic-bubble {
+  background-color: #0b0b12;
+  border: 3px solid #ffffff;
+  color: #ffffff;
+  box-shadow: 7px 7px 0px #e60012;
+  position: relative;
+}
+
+.p5-comic-bubble::before {
+  content: "";
+  position: absolute;
+  bottom: -16px;
+  left: 28px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 16px 16px 0 0;
+  border-color: #0b0b12 transparent transparent transparent;
+}
+
