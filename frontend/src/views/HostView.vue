@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRoute } from "vue-router";
 import { jukeboxClient } from "../shared/ws.ts";
-import { whoami } from "../shared/api.ts";
+import { whoami, getYouTubeAuthStatus } from "../shared/api.ts";
+import YouTubeAuthModal from "../components/auth/YouTubeAuthModal.vue";
 import AudioEngine from "../components/AudioEngine.vue";
 import Visualizer from "../components/Visualizer.vue";
 import QueueCard from "../components/QueueCard.vue";
@@ -71,7 +72,9 @@ const isTriviaHostSetupOpen = ref(false);
 const isTriviaModalOpen = ref(false);
 const isTriviaCreating = ref(false);
 const isGameHubOpen = ref(false);
+const isYouTubeAuthModalOpen = ref(false);
 
+const youtubeAuthStatus = computed(() => jukeboxClient.youtubeAuthStatus.value);
 const triviaState = computed(() => jukeboxClient.triviaState.value);
 
 watch(triviaState, (ts) => {
@@ -270,6 +273,10 @@ onMounted(async () => {
   }
   jukeboxClient.connect(token.value);
 
+  getYouTubeAuthStatus().then((s) => {
+    jukeboxClient.youtubeAuthStatus.value = s;
+  });
+
   try {
     const info = await whoami();
     lanUrl.value = `http://${info.lanIp}:${info.port}/`;
@@ -460,6 +467,21 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
           @click="isLeaderboardModalOpen = true"
         >
           <span>🏆 Leaderboard</span>
+        </button>
+
+        <!-- YouTube Bot Bypass Status & Auth Button -->
+        <button
+          class="glass-pill px-3 py-1.5 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+          :class="youtubeAuthStatus?.hasCookies ? 'text-emerald-400 border-emerald-500/30 hover:border-emerald-400 bg-emerald-500/10' : 'text-rose-300 border-rose-500/40 hover:border-rose-400 bg-rose-500/10'"
+          title="Status Akun YouTube & Anti-Bot Cookies"
+          @click="isYouTubeAuthModalOpen = true"
+        >
+          <span
+            class="w-2 h-2 rounded-full"
+            :class="youtubeAuthStatus?.hasCookies ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'"
+          ></span>
+          <span class="hidden sm:inline">YouTube:</span>
+          <span>{{ youtubeAuthStatus?.hasCookies ? 'Aktif' : 'Login Diperlukan' }}</span>
         </button>
 
         <!-- Katalog Game Hub Button for Host DJ -->
@@ -1044,6 +1066,12 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
     <TriviaModal
       :isOpen="isTriviaModalOpen"
       @close="isTriviaModalOpen = false"
+    />
+
+    <!-- YouTube Session & Anti-Bot Bypass Modal -->
+    <YouTubeAuthModal
+      :isOpen="isYouTubeAuthModalOpen"
+      @close="isYouTubeAuthModalOpen = false"
     />
 
     <!-- Full-Screen Loading Overlay saat Menyiapkan Room Tebak Lagu -->

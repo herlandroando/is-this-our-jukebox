@@ -34,6 +34,8 @@ export class TriviaGameManager {
   private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private autoResumeTimer: ReturnType<typeof setTimeout> | null = null;
   private audioReadyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private barrierTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private readyAudioClients = new Set<string>();
   private isCreatingLobby = false;
   private listeners: Set<TriviaEventListener> = new Set();
 
@@ -214,7 +216,7 @@ export class TriviaGameManager {
   }
 
   /**
-   * Pemain bergabung ke dalam lobby tebak lagu
+   * Pemain bergabung ke dalam lobby tebak lagu, atau pulihkan sesi saat reconnect/late-join
    */
   public joinLobby(
     clientId: string,
@@ -225,11 +227,36 @@ export class TriviaGameManager {
       return { success: false, message: "Tidak ada lobby tebak lagu yang aktif." };
     }
 
-    if (this.state.status !== "lobby") {
-      return { success: false, message: "Permainan sudah dimulai!" };
+    const isHost = clientId === this.state.hostClientId;
+
+    // 1. Kasus reconnect: pemain sudah ada dalam daftar
+    if (this.state.players[clientId]) {
+      const existing = this.state.players[clientId];
+      existing.isOnline = true;
+      if (nickname) existing.nickname = nickname;
+      console.log(`[trivia] Player "${existing.nickname}" (${clientId}) berhasil reconnect.`);
+      this.broadcast("playerJoined", { clientId, nickname: existing.nickname, isReconnect: true });
+      return { success: true };
     }
 
-    const isHost = clientId === this.state.hostClientId;
+    // 2. Kasus late-join saat game sudah berjalan (ronde 1 dst)
+    if (this.state.status !== "lobby") {
+      this.state.players[clientId] = {
+        clientId,
+        nickname: nickname || "Anonymous",
+        role,
+        score: 0,
+        isReady: true,
+        hasAnswered: false,
+        isOnline: true,
+        joinedAt: Date.now(),
+      };
+      console.log(`[trivia] Pemain baru "${nickname}" (${clientId}) bergabung di tengah permainan (late-join).`);
+      this.broadcast("playerJoined", { clientId, nickname, isLateJoin: true });
+      return { success: true };
+    }
+
+    // 3. Bergabung normal di ruang tunggu (status === "lobby")
     this.state.players[clientId] = {
       clientId,
       nickname,
@@ -237,6 +264,7 @@ export class TriviaGameManager {
       score: 0,
       isReady: isHost, // Host default siap
       hasAnswered: false,
+      isOnline: true,
       joinedAt: Date.now(),
     };
 
@@ -247,32 +275,51 @@ export class TriviaGameManager {
   /**
    * Pemain keluar dari lobby / disconnect
    */
-  public leaveLobby(clientId: string) {
+  public leaveLobby(clientId: string, isPermanent = false) {
     if (!this.state.players[clientId]) return;
 
     const leftPlayer = this.state.players[clientId];
-    delete this.state.players[clientId];
 
-    // Jika yang keluar adalah Host saat di lobby dan tidak ada player lain, batalkan game
-    if (clientId === this.state.hostClientId && this.state.status === "lobby") {
-      const remaining = Object.keys(this.state.players);
-      if (remaining.length === 0) {
-        this.closeGame();
-        return;
-      } else {
-        // Tunjuk player pertama sebagai host baru
-        const nextHostId = remaining[0];
-        this.state.hostClientId = nextHostId;
-        this.state.hostNickname = this.state.players[nextHostId].nickname;
-        this.state.players[nextHostId].isReady = true;
+    // Jika sedang di lobby atau keluar permanen secara manual:
+    if (this.state.status === "lobby" || isPermanent) {
+      delete this.state.players[clientId];
+
+      // Jika yang keluar adalah Host saat di lobby dan tidak ada player lain, batalkan game
+      if (clientId === this.state.hostClientId && this.state.status === "lobby") {
+        const remaining = Object.keys(this.state.players);
+        if (remaining.length === 0) {
+          this.closeGame();
+          return;
+        } else {
+          // Tunjuk player pertama sebagai host baru
+          const nextHostId = remaining[0];
+          this.state.hostClientId = nextHostId;
+          this.state.hostNickname = this.state.players[nextHostId].nickname;
+          this.state.players[nextHostId].isReady = true;
+        }
       }
+    } else {
+      // Game sedang berjalan di tengah ronde: tandai pemain offline tanpa menghapus skornya
+      leftPlayer.isOnline = false;
+      console.log(`[trivia] Player "${leftPlayer.nickname}" (${clientId}) terputus sementara (offline).`);
     }
 
-    this.broadcast("playerLeft", { clientId, nickname: leftPlayer.nickname });
+    this.broadcast("playerLeft", { clientId, nickname: leftPlayer.nickname, isPermanent });
 
-    // Jika sedang dalam ronde dan semua player yang tersisa sudah menjawab, selesaikan ronde
+    // Jika sedang dalam ronde dan semua player yang tersisa online sudah menjawab, selesaikan ronde
     if (this.state.status === "question") {
       this.checkAllAnsweredEarly();
+    }
+  }
+
+  /**
+   * Set preferensi output audio pemain ("host" vs "self")
+   */
+  public setPlayerAudioMode(clientId: string, mode: "host" | "self") {
+    const player = this.state.players[clientId];
+    if (player) {
+      player.audioOutputMode = mode;
+      console.log(`[trivia] Player ${player.nickname} (${clientId}) audio mode diset ke: ${mode}`);
     }
   }
 
@@ -333,6 +380,7 @@ export class TriviaGameManager {
    */
   private startRound(roundIndex: number) {
     this.clearAllTimers();
+    this.readyAudioClients.clear();
     if (roundIndex > this.activeQuestions.length) {
       this.finishGame();
       return;
@@ -358,25 +406,67 @@ export class TriviaGameManager {
     this.state.roundResult = undefined;
 
     console.log(
-      `[trivia] Ronde ${roundIndex}/${question.totalRounds} dimulai (menunggu audio ready): Track ID ${question.trackId}.`
+      `[trivia] Ronde ${roundIndex}/${question.totalRounds} dimulai (menunggu audio barrier ready): Track ID ${question.trackId}.`
     );
 
     this.broadcast("roundStart", { round: question });
 
-    // Fallback: Jika setelah 8 detik tidak ada perangkat yang mengirimkan sinyal audioReady,
-    // jalankan timer secara otomatis agar game tidak macet
+    // Fallback: Jika setelah 4.5 detik barrier belum terpenuhi,
+    // jalankan timer secara otomatis agar game dan tombol di HP tidak macet lama
     this.audioReadyFallbackTimer = setTimeout(() => {
       if (this.state.status === "question" && !this.state.currentRound?.isAudioReady) {
-        console.log(`[trivia] Audio ready fallback timer terpicu untuk ronde ${roundIndex} (8s timeout).`);
-        this.onAudioReady(roundIndex);
+        console.log(`[trivia] Audio ready fallback timer terpicu untuk ronde ${roundIndex} (4.5s timeout).`);
+        this.triggerTimerStart(roundIndex);
       }
-    }, 8000);
+    }, 4500);
   }
 
   /**
-   * Dipanggil saat Host atau klien mengonfirmasi bahwa audio cuplikan telah mulai berputar
+   * Dipanggil saat Host atau klien mengonfirmasi bahwa audio cuplikan telah siap/berputar
    */
-  public onAudioReady(roundIndex: number) {
+  public onAudioReady(roundIndex: number, clientId?: string) {
+    if (this.state.status !== "question") return;
+    if (this.currentRoundIndex !== roundIndex) return;
+
+    const question = this.state.currentRound;
+    if (!question || question.isAudioReady) return;
+
+    if (clientId) {
+      this.readyAudioClients.add(clientId);
+    }
+
+    // Perangkat yang wajib siap sebelum musik dibunyikan serempak:
+    // 1. Host (selalu jika ada host di room)
+    // 2. Pemain remote yang memakai mode audio "self" (Speaker Sendiri)
+    const requiredClientIds = new Set<string>();
+    if (this.state.hostClientId) {
+      requiredClientIds.add(this.state.hostClientId);
+    }
+    for (const p of Object.values(this.state.players)) {
+      if (p.audioOutputMode === "self") {
+        requiredClientIds.add(p.clientId);
+      }
+    }
+
+    const allRequiredReady =
+      requiredClientIds.size === 0 ||
+      Array.from(requiredClientIds).every((id) => this.readyAudioClients.has(id));
+
+    if (allRequiredReady) {
+      this.triggerTimerStart(roundIndex);
+    } else if (!this.barrierTimeoutTimer) {
+      // Barrier grace window: begitu ada setidaknya satu perangkat yang siap,
+      // beri waktu maksimal 2.5 detik untuk perangkat lain menyelesaikan buffering
+      this.barrierTimeoutTimer = setTimeout(() => {
+        if (this.state.status === "question" && !this.state.currentRound?.isAudioReady) {
+          console.log(`[trivia] Barrier timeout (2.5s) terpicu untuk ronde ${roundIndex}. Memulai timer.`);
+          this.triggerTimerStart(roundIndex);
+        }
+      }, 2500);
+    }
+  }
+
+  private triggerTimerStart(roundIndex: number) {
     if (this.state.status !== "question") return;
     if (this.currentRoundIndex !== roundIndex) return;
 
@@ -387,15 +477,24 @@ export class TriviaGameManager {
       clearTimeout(this.audioReadyFallbackTimer);
       this.audioReadyFallbackTimer = null;
     }
+    if (this.barrierTimeoutTimer) {
+      clearTimeout(this.barrierTimeoutTimer);
+      this.barrierTimeoutTimer = null;
+    }
 
+    const listenDurationSec = 3;
+    const listenDurationMs = listenDurationSec * 1000;
     const durationMs = (question.durationSec || 20) * 1000;
     const now = Date.now();
+
     question.isAudioReady = true;
-    question.startTime = now;
-    question.endTime = now + durationMs;
+    question.listenDurationSec = listenDurationSec;
+    question.listenStartTime = now;
+    question.startTime = now + listenDurationMs;
+    question.endTime = question.startTime + durationMs;
 
     console.log(
-      `[trivia] Audio ready dikonfirmasi! Timer ronde ${roundIndex} (${question.durationSec}s) mulai berdetik.`
+      `[trivia] Audio ready barrier terpenuhi! Fase dengarkan (${listenDurationSec}s) dimulai, lalu timer ronde ${roundIndex} (${question.durationSec}s) akan berdetik (${this.readyAudioClients.size} perangkat siap).`
     );
 
     this.broadcast("timerStart", {
@@ -403,12 +502,14 @@ export class TriviaGameManager {
       startTime: question.startTime,
       endTime: question.endTime,
       durationSec: question.durationSec,
+      listenDurationSec,
+      listenStartTime: question.listenStartTime,
     });
 
-    // Pasang timer batas waktu ronde
+    // Pasang timer batas waktu total ronde (fase dengarkan + durasi tebak + buffer)
     this.roundTimer = setTimeout(() => {
       this.endRound();
-    }, durationMs + 200);
+    }, listenDurationMs + durationMs + 200);
   }
 
   /**
@@ -428,6 +529,11 @@ export class TriviaGameManager {
     const question = this.state.currentRound;
     if (!question) return { success: false };
 
+    // Jangan izinkan submit jika masih dalam fase dengarkan (3 detik pertama)
+    if (question.startTime > 0 && Date.now() < question.startTime) {
+      return { success: false };
+    }
+
     const correctOptionId = this.correctAnswers.get(roundIndex);
     const isCorrect = optionId === correctOptionId;
 
@@ -436,7 +542,7 @@ export class TriviaGameManager {
       const totalDuration = (question.durationSec || 20) * 1000;
       const now = Date.now();
       const timeLeft = question.endTime > 0 ? Math.max(0, question.endTime - now) : totalDuration;
-      const ratio = Math.min(1, timeLeft / totalDuration);
+      const ratio = Math.min(1, Math.max(0, timeLeft / totalDuration));
       points = Math.round(500 + 500 * ratio);
     }
 
@@ -460,8 +566,10 @@ export class TriviaGameManager {
   }
 
   private checkAllAnsweredEarly() {
-    const players = Object.values(this.state.players);
-    if (players.length > 0 && players.every((p) => p.hasAnswered)) {
+    const activeOnlinePlayers = Object.values(this.state.players).filter(
+      (p) => p.isOnline !== false
+    );
+    if (activeOnlinePlayers.length > 0 && activeOnlinePlayers.every((p) => p.hasAnswered)) {
       if (this.roundTimer) {
         clearTimeout(this.roundTimer);
         this.roundTimer = null;
@@ -499,6 +607,18 @@ export class TriviaGameManager {
     // Urutkan peringkat sementara berdasarkan skor total tertinggi
     playerResults.sort((a, b) => b.totalScore - a.totalScore);
 
+    // Siapkan informasi cuplikan lagu berikutnya agar frontend bisa pre-buffer selama 5 detik recap
+    let nextSnippet = undefined;
+    if (this.currentRoundIndex < question.totalRounds && this.activeQuestions[this.currentRoundIndex]) {
+      const nextQ = this.activeQuestions[this.currentRoundIndex];
+      nextSnippet = {
+        trackId: nextQ.trackId,
+        provider: nextQ.provider,
+        snippetStartSec: nextQ.snippetStartSec,
+        durationSec: nextQ.durationSec,
+      };
+    }
+
     const result: TriviaRoundResult = {
       roundIndex: this.currentRoundIndex,
       totalRounds: question.totalRounds,
@@ -507,6 +627,7 @@ export class TriviaGameManager {
       correctArtist: correctOpt?.artist || "",
       trackId: question.trackId,
       playerResults,
+      nextSnippet,
     };
 
     this.state.status = "recap";
@@ -591,6 +712,10 @@ export class TriviaGameManager {
     if (this.audioReadyFallbackTimer) {
       clearTimeout(this.audioReadyFallbackTimer);
       this.audioReadyFallbackTimer = null;
+    }
+    if (this.barrierTimeoutTimer) {
+      clearTimeout(this.barrierTimeoutTimer);
+      this.barrierTimeoutTimer = null;
     }
   }
 }

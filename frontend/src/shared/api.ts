@@ -137,3 +137,24 @@ export async function submitRhythmScore(
   }
   return await res.json();
 }
+
+export async function getYouTubeAuthStatus(): Promise<import("./types.ts").YouTubeCookieStatus> {
+  const res = await fetch("/api/auth/youtube/status");
+  if (!res.ok) return { hasCookies: false, isLoggedIn: false, loginInProgress: false };
+  return await res.json();
+}
+
+export async function startYouTubeLogin(): Promise<{ success: boolean; message: string }> {
+  const res = await fetch("/api/auth/youtube/start-login", { method: "POST" });
+  return await res.json();
+}
+
+export async function cancelYouTubeLogin(): Promise<{ success: boolean }> {
+  const res = await fetch("/api/auth/youtube/cancel-login", { method: "POST" });
+  return await res.json();
+}
+
+export async function deleteYouTubeCookies(): Promise<{ success: boolean }> {
+  const res = await fetch("/api/auth/youtube/cookies", { method: "DELETE" });
+  return await res.json();
+}

@@ -120,6 +120,7 @@ export type ClientMessage =
   | { type: "trivia:setHostPlaying"; isPlaying: boolean; token?: string }
   | { type: "trivia:forceStart"; token?: string }
   | { type: "trivia:audioReady"; roundIndex: number }
+  | { type: "trivia:setAudioMode"; mode: "host" | "self" }
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
   | { type: "trivia:close"; token?: string };
 
@@ -173,11 +174,23 @@ export type ServerMessage =
       startTime: number;
       endTime: number;
       durationSec: number;
+      listenDurationSec?: number;
+      listenStartTime?: number;
     }
   | { type: "trivia:roundEnd"; result: TriviaRoundResult }
   | { type: "trivia:gameOver"; podium: TriviaPodiumEntry[] }
   | { type: "trivia:closed" }
-  | { type: "trivia:presetsUpdated"; presets: TriviaPresetItem[] };
+  | { type: "trivia:presetsUpdated"; presets: TriviaPresetItem[] }
+  | { type: "youtubeAuthStatus"; status: YouTubeCookieStatus };
+
+export interface YouTubeCookieStatus {
+  hasCookies: boolean;
+  fileSize?: number;
+  lastModified?: number;
+  isLoggedIn?: boolean;
+  loginInProgress?: boolean;
+  statusMessage?: string;
+}
 
 export interface TriviaPresetItem {
   id: string;
@@ -226,6 +239,8 @@ export interface TriviaPlayer {
   selectedOptionId?: string;
   lastAnswerCorrect?: boolean;
   lastAnswerPoints?: number;
+  audioOutputMode?: "host" | "self";
+  isOnline?: boolean;
   joinedAt: number;
 }
 
@@ -239,6 +254,8 @@ export interface TriviaQuestion {
   options: TriviaOption[];
   startTime: number;
   endTime: number;
+  listenDurationSec?: number;
+  listenStartTime?: number;
   isAudioReady?: boolean;
 }
 
@@ -259,6 +276,12 @@ export interface TriviaRoundResult {
   correctArtist: string;
   trackId: string;
   playerResults: TriviaPlayerRoundResult[];
+  nextSnippet?: {
+    trackId: string;
+    provider: AudioProvider;
+    snippetStartSec: number;
+    durationSec: number;
+  };
 }
 
 export interface TriviaPodiumEntry {

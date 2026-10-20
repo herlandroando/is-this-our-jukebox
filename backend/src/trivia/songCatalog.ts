@@ -155,10 +155,99 @@ async function fetchDynamicCandidates(
   return candidates;
 }
 
+// Cache pencarian lagu artis agar responsif dan efisien (0ms pada pencarian berulang)
+const artistSongsCache = new Map<string, Array<{ title: string; artist: string }>>();
+
+async function fetchSameArtistCandidates(
+  artist: string,
+  currentTitle: string,
+  pool: SearchResult[]
+): Promise<Array<{ title: string; artist: string }>> {
+  const normArtist = artist.trim().toLowerCase();
+  const normTitle = cleanTitle(currentTitle).toLowerCase();
+  const results: Array<{ title: string; artist: string }> = [];
+  const seenTitles = new Set<string>([normTitle]);
+
+  // 1. Dari memory pool playlist saat ini (0ms)
+  for (const item of pool) {
+    if (!item.title || !item.artist) continue;
+    const itemArtistNorm = item.artist.trim().toLowerCase();
+    const itemTitleNorm = cleanTitle(item.title).toLowerCase();
+    if (
+      (itemArtistNorm === normArtist || itemArtistNorm.includes(normArtist) || normArtist.includes(itemArtistNorm)) &&
+      !seenTitles.has(itemTitleNorm)
+    ) {
+      seenTitles.add(itemTitleNorm);
+      results.push({ title: cleanTitle(item.title), artist: item.artist });
+    }
+  }
+
+  // 2. Dari database SQLite jukebox lokal (0ms)
+  try {
+    const dbTracks = jukeboxDb.getTracksByArtist(artist, currentTitle, 6);
+    for (const dt of dbTracks) {
+      const dtTitleNorm = cleanTitle(dt.title).toLowerCase();
+      if (!seenTitles.has(dtTitleNorm)) {
+        seenTitles.add(dtTitleNorm);
+        results.push({ title: cleanTitle(dt.title), artist: dt.artist || artist });
+      }
+    }
+  } catch {}
+
+  // 3. Cek cache memori
+  const cached = artistSongsCache.get(normArtist);
+  if (cached) {
+    for (const c of cached) {
+      const cTitleNorm = cleanTitle(c.title).toLowerCase();
+      if (!seenTitles.has(cTitleNorm)) {
+        seenTitles.add(cTitleNorm);
+        results.push(c);
+      }
+    }
+  }
+
+  // 4. Jika masih kurang dan belum di-cache, fetch cepat dari YTMusic (timeout 1.5 detik agar tidak memblokir)
+  if (results.length < 3 && !artistSongsCache.has(normArtist)) {
+    try {
+      const timeoutPromise = new Promise<any[]>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 1500)
+      );
+      const searchPromise = (async () => {
+        const { getYTMusic } = await import("../search/index.ts");
+        const yt = await getYTMusic();
+        return await yt.searchSongs(artist);
+      })();
+
+      const ytSongs = await Promise.race([searchPromise, timeoutPromise]);
+      const fetched: Array<{ title: string; artist: string }> = [];
+      if (Array.isArray(ytSongs)) {
+        for (const s of ytSongs) {
+          if (!s || !s.name) continue;
+          const sArtist = (typeof s.artist === "object" ? s.artist?.name : s.artist) || artist;
+          const sTitle = cleanTitle(s.name);
+          const sTitleNorm = sTitle.toLowerCase();
+          if (!seenTitles.has(sTitleNorm)) {
+            seenTitles.add(sTitleNorm);
+            const item = { title: sTitle, artist: sArtist };
+            results.push(item);
+            fetched.push(item);
+          }
+        }
+      }
+      artistSongsCache.set(normArtist, fetched);
+    } catch {
+      artistSongsCache.set(normArtist, []);
+    }
+  }
+
+  return results;
+}
+
 /**
  * Membangun daftar pertanyaan (ronde) kuis tebak lagu multi-genre.
  * - Lagu diambil langsung dari Curated Playlist atau antrean dinamis.
  * - Pilihan ganda pengecoh diambil dari lagu lain di playlist yang sama (se-genre).
+ * - Sekitar 50%-70% ronde menyertakan 2-3 pilihan dari artis yang sama agar tidak terlalu mudah ditebak.
  */
 export async function generateTriviaQuestions(
   categoryId: string,
@@ -190,6 +279,14 @@ export async function generateTriviaQuestions(
   const selectedCount = Math.max(1, Math.min(roundCount, shuffledPool.length));
   const selectedSongs = shuffledPool.slice(0, selectedCount);
 
+  // Tentukan ronde mana saja yang memprioritaskan 2-3 lagu dengan penyanyi yang sama (sekitar 60%)
+  const sameArtistRounds = new Set<number>();
+  for (let i = 0; i < selectedSongs.length; i++) {
+    if (Math.random() < 0.65 || selectedSongs.length <= 3) {
+      sameArtistRounds.add(i);
+    }
+  }
+
   const questions: TriviaQuestion[] = [];
   const answers = new Map<number, string>(); // roundIndex -> correctOptionId
 
@@ -208,47 +305,60 @@ export async function generateTriviaQuestions(
       artist: song.artist,
     };
 
-    // Kumpulkan calon pengecoh cerdas (smart decoys)
-    const decoyCandidates: Array<{ title: string; artist: string }> = [];
+    const isSameArtistTargeted = sameArtistRounds.has(index);
+    const uniqueDecoys: Array<{ title: string; artist: string }> = [];
+    const usedTitles = new Set<string>([songCleanTitle.toLowerCase()]);
 
-    // 1. Prioritas Utama Decoy: Lagu-lagu lain di dalam pool/playlist yang sama (se-genre!)
+    // 1. Jika ronde ini ditargetkan memiliki 2-3 lagu dari penyanyi yang sama:
+    if (isSameArtistTargeted) {
+      const sameArtistCandidates = await fetchSameArtistCandidates(song.artist, songCleanTitle, validPool);
+      // Ingin 1-2 lagu tambahan dari penyanyi yang sama (sehingga total ada 2-3 pilihan artis tsb)
+      const targetSameArtistCount = Math.random() < 0.5 ? 2 : 1;
+      const shuffledSame = shuffleArray(sameArtistCandidates);
+
+      for (const item of shuffledSame) {
+        const itemTitleNorm = item.title.toLowerCase();
+        if (!usedTitles.has(itemTitleNorm)) {
+          usedTitles.add(itemTitleNorm);
+          uniqueDecoys.push(item);
+          if (uniqueDecoys.length >= targetSameArtistCount) break;
+        }
+      }
+    }
+
+    // 2. Lengkapi sisa pengecoh dari lagu-lagu lain di dalam pool/playlist yang sama (se-genre!)
     const otherPoolSongs = validPool.filter(
       (item) => cleanTitle(item.title).toLowerCase() !== songCleanTitle.toLowerCase()
     );
     for (const other of shuffleArray(otherPoolSongs)) {
-      if (decoyCandidates.length >= 10) break;
-      decoyCandidates.push({
-        title: cleanTitle(other.title),
-        artist: other.artist,
-      });
+      if (uniqueDecoys.length >= 3) break;
+      const otherTitle = cleanTitle(other.title);
+      const otherTitleNorm = otherTitle.toLowerCase();
+      if (!usedTitles.has(otherTitleNorm)) {
+        usedTitles.add(otherTitleNorm);
+        uniqueDecoys.push({
+          title: otherTitle,
+          artist: other.artist,
+        });
+      }
     }
 
-    // 2. Prioritas Kedua Decoy: Judul lagu lain dari artis yang sama via MusicBrainz
-    if (decoyCandidates.length < 5) {
+    // 3. Pengecoh cadangan jika opsi unik masih kurang dari 3
+    if (uniqueDecoys.length < 3) {
       try {
         const mbRecordings = await fetchMusicBrainzArtistRecordings(song.artist, 4);
         for (const mbTitle of mbRecordings) {
-          if (mbTitle.toLowerCase() !== songCleanTitle.toLowerCase()) {
-            decoyCandidates.push({ title: mbTitle, artist: song.artist });
+          const mbTitleNorm = cleanTitle(mbTitle).toLowerCase();
+          if (!usedTitles.has(mbTitleNorm)) {
+            usedTitles.add(mbTitleNorm);
+            uniqueDecoys.push({ title: cleanTitle(mbTitle), artist: song.artist });
+            if (uniqueDecoys.length >= 3) break;
           }
         }
       } catch {}
     }
 
-    // Ambil 3 pengecoh unik yang tidak sama dengan jawaban benar
-    const uniqueDecoys: Array<{ title: string; artist: string }> = [];
-    const usedTitles = new Set<string>([songCleanTitle.toLowerCase()]);
-
-    for (const d of decoyCandidates) {
-      const dTitle = d.title.toLowerCase();
-      if (!usedTitles.has(dTitle)) {
-        usedTitles.add(dTitle);
-        uniqueDecoys.push(d);
-        if (uniqueDecoys.length >= 3) break;
-      }
-    }
-
-    // Fallback jika opsi pengecoh masih kurang dari 3
+    // 4. Fallback absolut jika benar-benar kurang
     let fallbackCounter = 1;
     while (uniqueDecoys.length < 3) {
       uniqueDecoys.push({
@@ -257,7 +367,7 @@ export async function generateTriviaQuestions(
       });
     }
 
-    const decoyOptions: TriviaOption[] = uniqueDecoys.map((item, dIdx) => ({
+    const decoyOptions: TriviaOption[] = uniqueDecoys.slice(0, 3).map((item, dIdx) => ({
       id: `opt-${roundIndex}-decoy-${dIdx + 1}`,
       label: `${item.title} - ${item.artist}`,
       title: item.title,

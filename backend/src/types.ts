@@ -129,6 +129,7 @@ export type ClientMessage =
   | { type: "trivia:setHostPlaying"; isPlaying: boolean; token?: string }
   | { type: "trivia:forceStart"; token?: string }
   | { type: "trivia:audioReady"; roundIndex: number }
+  | { type: "trivia:setAudioMode"; mode: "host" | "self" }
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
   | { type: "trivia:close"; token?: string };
 
@@ -202,4 +203,5 @@ export type ServerMessage =
   | { type: "trivia:roundEnd"; result: import("./trivia/types.ts").TriviaRoundResult }
   | { type: "trivia:gameOver"; podium: import("./trivia/types.ts").TriviaPodiumEntry[] }
   | { type: "trivia:presetsUpdated"; presets: import("./trivia/types.ts").TriviaPresetItem[] }
-  | { type: "trivia:closed" };
+  | { type: "trivia:closed" }
+  | { type: "youtubeAuthStatus"; status: import("./auth/youtubeLogin.ts").YouTubeCookieStatus };

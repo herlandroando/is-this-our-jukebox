@@ -1,5 +1,7 @@
+import { existsSync } from "fs";
 import Soundcloud from "soundcloud.ts";
 import type { AudioProvider, SearchResult } from "../types.ts";
+import { getCookiesFilePath } from "../auth/youtubeLogin.ts";
 
 interface CachedStream {
   url: string;
@@ -32,6 +34,10 @@ export function invalidateStreamCache(id: string) {
   streamCache.delete(id);
 }
 
+export function clearAllStreamCache() {
+  streamCache.clear();
+}
+
 function getSoundcloudClass(): typeof Soundcloud {
   const mod: any = Soundcloud;
   return mod.default?.default || mod.Soundcloud || mod.default || mod;
@@ -47,70 +53,145 @@ function getSoundCloud(): Soundcloud {
   return scInstance;
 }
 
+const CANDIDATE_PREFIXES: string[][] = [
+  ["yt-dlp"],
+  ["python", "-m", "yt_dlp"],
+  ["py", "-3", "-m", "yt_dlp"],
+];
+
 let memoizedYtDlpPrefix: string[] | null = null;
+let ytDlpPrefixPromise: Promise<string[] | null> | null = null;
+
+/**
+ * Discovers and memoizes the working command prefix for yt-dlp.
+ */
+export async function getYtDlpPrefix(): Promise<string[] | null> {
+  if (memoizedYtDlpPrefix) return memoizedYtDlpPrefix;
+  if (!ytDlpPrefixPromise) {
+    ytDlpPrefixPromise = (async () => {
+      for (const prefix of CANDIDATE_PREFIXES) {
+        try {
+          const proc = Bun.spawn([...prefix, "--version"], {
+            stdout: "ignore",
+            stderr: "ignore",
+          });
+          const code = await proc.exited;
+          if (code === 0) {
+            memoizedYtDlpPrefix = prefix;
+            return prefix;
+          }
+        } catch {
+          // ignore candidate failure
+        }
+      }
+      return null;
+    })();
+  }
+  const result = await ytDlpPrefixPromise;
+  if (!result) ytDlpPrefixPromise = null;
+  return result;
+}
+
+/**
+ * Spawns yt-dlp with the specified arguments and returns the first stream URL line.
+ */
+async function spawnYtDlpExtract(
+  prefix: string[],
+  args: string[],
+  signal?: AbortSignal
+): Promise<string | null> {
+  if (signal?.aborted) return null;
+  try {
+    const proc = Bun.spawn([...prefix, ...args], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+
+    const onAbort = () => {
+      try {
+        proc.kill();
+      } catch {
+        // ignore
+      }
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
+    const text = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
+
+    if (signal?.aborted) return null;
+
+    if (exitCode === 0 && text.trim().startsWith("http")) {
+      return text.trim().split("\n")[0].trim();
+    }
+  } catch {
+    // ignore process spawn errors
+  }
+  return null;
+}
 
 /**
  * Executes yt-dlp to get a direct playable audio stream URL.
+ * 
+ * Uses a 2-Pass Hybrid Resolution strategy:
+ * Pass 1 (Primary): Clean stream without cookies.
+ *   - Requests format 140 (audio/m4a AAC) with EJS challenge solver.
+ *   - Bypasses YouTube's authenticated web SABR-only experiment (which otherwise forces format 18 video/mp4 and causes 403 Forbidden).
+ * Pass 2 (Authenticated Fallback): Uses cookies.txt.
+ *   - Triggered only if Pass 1 fails and cookies file exists (e.g. for age-restricted or members-only videos).
  */
 async function resolveYouTubeUrl(videoId: string, signal?: AbortSignal): Promise<string | null> {
   if (signal?.aborted) return null;
+  const prefix = await getYtDlpPrefix();
+  if (!prefix) return null;
+
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  
-  // Try memoized prefix first if available; otherwise try known command prefixes
-  const candidatePrefixes: string[][] = memoizedYtDlpPrefix
-    ? [memoizedYtDlpPrefix]
-    : [
-        ["yt-dlp"],
-        ["python", "-m", "yt_dlp"],
-        ["py", "-3", "-m", "yt_dlp"],
-      ];
+  const baseAudioFormat = "ba[ext=m4a]/ba[vcodec=none][acodec^=mp4a]/ba/b";
 
-  for (const prefix of candidatePrefixes) {
-    if (signal?.aborted) return null;
-    try {
-      // Prioritize m4a/aac (format 140) for universal native browser <audio> compatibility
-      const cmd = [...prefix, "-g", "-f", "ba[ext=m4a]/ba[vcodec=none][acodec^=mp4a]/ba/b", ytUrl];
-      const proc = Bun.spawn(cmd, {
-        stdout: "pipe",
-        stderr: "ignore",
-      });
+  // Pass 1: Clean stream without cookies (format 140 audio/m4a)
+  const pass1Args = [
+    "--remote-components", "ejs:github",
+    "--js-runtimes", "node",
+    "-g",
+    "-f", baseAudioFormat,
+    ytUrl,
+  ];
 
-      const onAbort = () => {
-        try {
-          proc.kill();
-        } catch {
-          // ignore
-        }
-      };
-      if (signal) {
-        signal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      const text = await new Response(proc.stdout).text();
-      const exitCode = await proc.exited;
-
-      if (signal) {
-        signal.removeEventListener("abort", onAbort);
-      }
-
-      if (signal?.aborted) return null;
-
-      if (exitCode === 0 && text.trim().startsWith("http")) {
-        memoizedYtDlpPrefix = prefix;
-        const streamUrl = text.trim().split("\n")[0].trim();
-        return streamUrl;
-      }
-    } catch {
-      // try next command variant
-    }
+  const cleanUrl = await spawnYtDlpExtract(prefix, pass1Args, signal);
+  if (cleanUrl) {
+    return cleanUrl;
   }
 
   if (signal?.aborted) return null;
 
-  // If the previously memoized prefix failed, invalidate and retry all variants once
+  // Pass 2: Authenticated fallback with cookies (if available and Pass 1 failed)
+  const cookieFile = getCookiesFilePath();
+  if (existsSync(cookieFile)) {
+    const pass2Args = [
+      "--cookies", cookieFile,
+      "--remote-components", "ejs:github",
+      "--js-runtimes", "node",
+      "-g",
+      "-f", baseAudioFormat,
+      ytUrl,
+    ];
+
+    const authUrl = await spawnYtDlpExtract(prefix, pass2Args, signal);
+    if (authUrl) {
+      return authUrl;
+    }
+  }
+
+  // If failed with memoized prefix, invalidate memoization once to allow re-detecting
   if (memoizedYtDlpPrefix) {
     memoizedYtDlpPrefix = null;
-    return resolveYouTubeUrl(videoId, signal);
+    ytDlpPrefixPromise = null;
   }
 
   return null;
@@ -143,38 +224,11 @@ async function resolveSoundCloudUrl(trackIdOrUrl: string, signal?: AbortSignal):
     }
 
     // 2. Try yt-dlp to extract stream for SoundCloud URL
-    const candidatePrefixes: string[][] = memoizedYtDlpPrefix
-      ? [memoizedYtDlpPrefix]
-      : [
-          ["yt-dlp"],
-          ["python", "-m", "yt_dlp"],
-          ["py", "-3", "-m", "yt_dlp"],
-        ];
-
-    for (const prefix of candidatePrefixes) {
-      if (signal?.aborted) return null;
-      try {
-        const cmd = [...prefix, "-g", url];
-        const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "ignore" });
-        const onAbort = () => {
-          try {
-            proc.kill();
-          } catch {
-            // ignore
-          }
-        };
-        if (signal) signal.addEventListener("abort", onAbort, { once: true });
-        const text = await new Response(proc.stdout).text();
-        const exitCode = await proc.exited;
-        if (signal) signal.removeEventListener("abort", onAbort);
-        if (signal?.aborted) return null;
-
-        if (exitCode === 0 && text.trim().startsWith("http")) {
-          memoizedYtDlpPrefix = prefix;
-          return text.trim().split("\n")[0].trim();
-        }
-      } catch {
-        // try next command variant
+    const prefix = await getYtDlpPrefix();
+    if (prefix && !signal?.aborted) {
+      const streamUrl = await spawnYtDlpExtract(prefix, ["-g", url], signal);
+      if (streamUrl) {
+        return streamUrl;
       }
     }
 

@@ -31,6 +31,7 @@ export class JukeboxClient {
   public isTriviaLobbyInvitationOpen = ref(false);
   public triviaInvitationData = ref<{ hostNickname: string; categoryId: string } | null>(null);
   public triviaPresets = ref<import("./types.ts").TriviaPresetItem[]>([]);
+  public youtubeAuthStatus = ref<import("./types.ts").YouTubeCookieStatus | null>(null);
 
   private timeListeners = new Set<(currentTime: number, duration: number) => void>();
   private seekListeners = new Set<(time: number) => void>();
@@ -38,7 +39,14 @@ export class JukeboxClient {
   private shoutoutListeners = new Set<(shoutout: ShoutoutBroadcastItem) => void>();
   private comboResetListeners = new Set<(lastCombo: number, emoji?: string) => void>();
   private triviaTimerStartListeners = new Set<
-    (payload: { roundIndex: number; startTime: number; endTime: number; durationSec: number }) => void
+    (payload: {
+      roundIndex: number;
+      startTime: number;
+      endTime: number;
+      durationSec: number;
+      listenDurationSec?: number;
+      listenStartTime?: number;
+    }) => void
   >();
   private triviaClosedListeners = new Set<() => void>();
 
@@ -106,6 +114,10 @@ export class JukeboxClient {
         clientId: this.clientId.value,
         nickname: localStorage.getItem("jukebox_nickname") || undefined,
       });
+      // Jika game tebak lagu sedang aktif, langsung kirim join untuk reconnect / sync
+      if (this.triviaState.value && this.triviaState.value.status !== "idle") {
+        this.joinTriviaLobby();
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -229,10 +241,18 @@ export class JukeboxClient {
 
       case "trivia:timerStart":
         if (this.triviaState.value?.currentRound && this.triviaState.value.currentRound.roundIndex === msg.roundIndex) {
-          this.triviaState.value.currentRound.isAudioReady = true;
-          this.triviaState.value.currentRound.startTime = msg.startTime;
-          this.triviaState.value.currentRound.endTime = msg.endTime;
-          this.triviaState.value.currentRound.durationSec = msg.durationSec;
+          this.triviaState.value = {
+            ...this.triviaState.value,
+            currentRound: {
+              ...this.triviaState.value.currentRound,
+              isAudioReady: true,
+              startTime: msg.startTime,
+              endTime: msg.endTime,
+              durationSec: msg.durationSec,
+              listenDurationSec: msg.listenDurationSec,
+              listenStartTime: msg.listenStartTime,
+            },
+          };
         }
         for (const cb of this.triviaTimerStartListeners) {
           cb(msg);
@@ -261,6 +281,10 @@ export class JukeboxClient {
 
       case "trivia:presetsUpdated":
         this.triviaPresets.value = msg.presets;
+        break;
+
+      case "youtubeAuthStatus":
+        this.youtubeAuthStatus.value = msg.status;
         break;
     }
   }
@@ -314,6 +338,10 @@ export class JukeboxClient {
     this.send({ type: "trivia:ready", isReady });
   }
 
+  public setTriviaAudioMode(mode: "host" | "self") {
+    this.send({ type: "trivia:setAudioMode", mode });
+  }
+
   public setTriviaHostPlaying(isPlaying: boolean) {
     this.send({ type: "trivia:setHostPlaying", isPlaying, token: this.token || undefined });
   }
@@ -335,7 +363,14 @@ export class JukeboxClient {
   }
 
   public onTriviaTimerStart(
-    cb: (payload: { roundIndex: number; startTime: number; endTime: number; durationSec: number }) => void
+    cb: (payload: {
+      roundIndex: number;
+      startTime: number;
+      endTime: number;
+      durationSec: number;
+      listenDurationSec?: number;
+      listenStartTime?: number;
+    }) => void
   ): () => void {
     this.triviaTimerStartListeners.add(cb);
     return () => this.triviaTimerStartListeners.delete(cb);

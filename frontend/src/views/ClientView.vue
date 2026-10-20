@@ -375,7 +375,7 @@ function onClaimRole(passcode: string) {
     />
 
     <!-- Floating Trivia Invitation Banner -->
-    <TriviaInvitationBanner />
+    <TriviaInvitationBanner @join="onOpenTriviaModal" />
 
     <!-- Trivia Host Setup Modal -->
     <TriviaHostSetupModal

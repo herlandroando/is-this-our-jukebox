@@ -85,6 +85,8 @@ export class JukeboxWsHub {
           startTime: payload.startTime,
           endTime: payload.endTime,
           durationSec: payload.durationSec,
+          listenDurationSec: payload.listenDurationSec,
+          listenStartTime: payload.listenStartTime,
         });
       } else if (eventType === "roundEnd") {
         this.broadcast({
@@ -151,7 +153,7 @@ export class JukeboxWsHub {
   public handleClose(ws: ServerWebSocket<WsUserData>) {
     this.sockets.delete(ws);
     this.lastShoutoutTimes.delete(ws.data.id);
-    triviaGameManager.leaveLobby(ws.data.id);
+    triviaGameManager.leaveLobby(ws.data.id, false);
     queueStore.removeMember(ws.data.id, this.sockets.size);
   }
 
@@ -608,7 +610,7 @@ export class JukeboxWsHub {
       }
 
       case "trivia:leave": {
-        triviaGameManager.leaveLobby(ws.data.id);
+        triviaGameManager.leaveLobby(ws.data.id, true);
         break;
       }
 
@@ -647,8 +649,13 @@ export class JukeboxWsHub {
         break;
       }
 
+      case "trivia:setAudioMode": {
+        triviaGameManager.setPlayerAudioMode(ws.data.id, msg.mode);
+        break;
+      }
+
       case "trivia:audioReady": {
-        triviaGameManager.onAudioReady(msg.roundIndex);
+        triviaGameManager.onAudioReady(msg.roundIndex, ws.data.id);
         break;
       }
 

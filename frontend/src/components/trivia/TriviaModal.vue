@@ -72,6 +72,8 @@ const categoryLabel = computed(() => {
 // Timer countdown animation state
 const remainingSeconds = ref(20);
 const timerProgressPercent = ref(100);
+const isListeningPhase = ref(false);
+const listeningSecondsLeft = ref(3);
 let timerInterval: ReturnType<typeof setInterval> | null = null;
 
 // Audio & Autoplay state
@@ -80,14 +82,25 @@ const isAudioBuffering = ref(false);
 const isHeadsetEnabled = ref(false);
 const headsetVolume = ref(85);
 let localAudio: HTMLAudioElement | null = null;
+let prebufferAudio: HTMLAudioElement | null = null;
 let currentLoadedRoundIndex: number | null = null;
 let unsubTimerStart: (() => void) | null = null;
+
+// Konfirmasi Sumber Suara: 'host' (Speaker Host) vs 'self' (Speaker Sendiri)
+const speakerChoice = ref<"host" | "self" | null>(null);
+const showSpeakerPrompt = ref(false);
+
+// Notifikasi interaktif saat pengguna tap tombol pilihan sebelum audio ready
+const showWaitingAudioNotice = ref(false);
+let waitingNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Silent WAV mikro (44 byte) untuk membuka kunci AudioContext di Mobile Safari & Chrome Android secara aman
+const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
 
 // Auto-countdown untuk penutupan podium
 const podiumCountdown = ref(15);
 let podiumInterval: ReturnType<typeof setInterval> | null = null;
 
-// Inisialisasi audio element lokal
 // Inisialisasi audio element lokal
 function initLocalAudio() {
   if (!localAudio) {
@@ -98,13 +111,14 @@ function initLocalAudio() {
   localAudio.volume = isHost.value ? 1.0 : Math.max(0, Math.min(1, headsetVolume.value / 100));
 }
 
-// Buka kunci autoplay peramban dengan gestur interaksi pengguna awal
+// Buka kunci autoplay peramban dengan gestur interaksi pengguna awal (Speaker Sendiri / Siap)
 function primeAudio() {
   initLocalAudio();
-  if (localAudio && localAudio.paused) {
-    localAudio.play().then(() => {
-      localAudio?.pause();
-    }).catch(() => {});
+  if (localAudio && localAudio.paused && (!localAudio.src || localAudio.src.startsWith("data:"))) {
+    localAudio.src = SILENT_WAV;
+    localAudio.play().catch((e) => {
+      console.warn("[trivia-audio] primeAudio note:", e);
+    });
   }
 }
 
@@ -115,9 +129,29 @@ function stopLocalAudio() {
     localAudio.pause();
     localAudio.currentTime = 0;
   }
+  if (prebufferAudio) {
+    prebufferAudio.pause();
+    prebufferAudio.src = "";
+  }
   isAutoplayBlocked.value = false;
   isAudioBuffering.value = false;
   currentLoadedRoundIndex = null;
+}
+
+function prebufferNextSnippet(trackId: string, provider: "yt" | "sc", startSec: number) {
+  if (!isHost.value && !isHeadsetEnabled.value) return;
+  console.log(`[trivia-audio] Pre-buffering cuplikan lagu berikutnya (${trackId}) di latar belakang...`);
+  try {
+    if (!prebufferAudio) {
+      prebufferAudio = new Audio();
+      prebufferAudio.preload = "auto";
+    }
+    const streamUrl = getStreamUrl(trackId, provider);
+    prebufferAudio.src = streamUrl;
+    prebufferAudio.load();
+  } catch (err) {
+    console.warn("[trivia-audio] Error pre-buffering next snippet:", err);
+  }
 }
 
 function playSnippetAudio(trackId: string, provider: "yt" | "sc", startSec: number, roundIdx: number) {
@@ -138,55 +172,41 @@ function playSnippetAudio(trackId: string, provider: "yt" | "sc", startSec: numb
   const streamUrl = getStreamUrl(trackId, provider);
   localAudio.src = streamUrl;
 
-  let hasStarted = false;
+  let hasSignaledReady = false;
 
-  const tryPlay = () => {
-    if (hasStarted || !localAudio || currentLoadedRoundIndex !== roundIdx) return;
-    hasStarted = true;
+  const onCanPlay = () => {
+    if (!localAudio || currentLoadedRoundIndex !== roundIdx) return;
 
     try {
       if (startSec > 0 && Math.abs(localAudio.currentTime - startSec) > 0.5) {
         localAudio.currentTime = startSec;
       }
     } catch (e) {
-      console.warn("[trivia-audio] Error setting seek position:", e);
+      console.warn("[trivia-audio] Seek position error:", e);
     }
 
-    const onPlaying = () => {
-      localAudio?.removeEventListener("playing", onPlaying);
-      if (currentLoadedRoundIndex !== roundIdx) return;
+    if (!hasSignaledReady) {
+      hasSignaledReady = true;
       isAudioBuffering.value = false;
-      isAutoplayBlocked.value = false;
-      console.log(`[trivia-audio] Audio ronde ${roundIdx} terkonfirmasi BERPUTAR di detik ${localAudio?.currentTime}s!`);
+      console.log(`[trivia-audio] Audio ronde ${roundIdx} ter-buffer di detik ${startSec}s. Mengirim sinyal audioReady.`);
       jukeboxClient.signalTriviaAudioReady(roundIdx);
-    };
-
-    localAudio.addEventListener("playing", onPlaying, { once: true });
-
-    const playPromise = localAudio.play();
-    if (playPromise) {
-      playPromise
-        .then(() => {
-          // Jika audio sudah langsung emit data
-          if (localAudio && !localAudio.paused && localAudio.currentTime >= Math.max(0, startSec - 1)) {
-            isAudioBuffering.value = false;
-            isAutoplayBlocked.value = false;
-            jukeboxClient.signalTriviaAudioReady(roundIdx);
-          }
-        })
-        .catch((err) => {
-          console.warn("[trivia-audio] Autoplay prevented, waiting for user interaction:", err);
-          isAudioBuffering.value = false;
-          isAutoplayBlocked.value = true;
-        });
     }
-  };
 
-  const onCanPlay = () => {
-    tryPlay();
+    // Jika timer ronde sudah dimulai oleh server (barrier sudah terpenuhi sebelumnya), langsung bunyikan!
+    if (currentRound.value?.isAudioReady && localAudio.paused) {
+      startAudiblePlayback(roundIdx);
+    }
   };
 
   localAudio.addEventListener("canplay", onCanPlay, { once: true });
+  localAudio.addEventListener("loadedmetadata", () => {
+    try {
+      if (startSec > 0 && localAudio) {
+        localAudio.currentTime = startSec;
+      }
+    } catch {}
+  }, { once: true });
+
   localAudio.addEventListener(
     "error",
     (e) => {
@@ -197,9 +217,8 @@ function playSnippetAudio(trackId: string, provider: "yt" | "sc", startSec: numb
         setTimeout(() => {
           if (currentLoadedRoundIndex === roundIdx && localAudio) {
             localAudio.load();
-            tryPlay();
           }
-        }, 600);
+        }, 500);
       } else {
         isAudioBuffering.value = false;
       }
@@ -208,9 +227,28 @@ function playSnippetAudio(trackId: string, provider: "yt" | "sc", startSec: numb
   );
 
   if (localAudio.readyState >= 2) {
-    tryPlay();
+    onCanPlay();
   } else {
     localAudio.load();
+  }
+}
+
+function startAudiblePlayback(roundIdx: number) {
+  if (!localAudio || currentLoadedRoundIndex !== roundIdx) return;
+
+  const playPromise = localAudio.play();
+  if (playPromise) {
+    playPromise
+      .then(() => {
+        isAudioBuffering.value = false;
+        isAutoplayBlocked.value = false;
+        console.log(`[trivia-audio] Pemutaran serempak ronde ${roundIdx} BERJALAN di detik ${localAudio?.currentTime}s!`);
+      })
+      .catch((err) => {
+        console.warn("[trivia-audio] Autoplay prevented, menunggu ketukan layar pengguna:", err);
+        isAudioBuffering.value = false;
+        isAutoplayBlocked.value = true;
+      });
   }
 }
 
@@ -222,18 +260,7 @@ function unblockAudio() {
       }
     } catch {}
 
-    localAudio
-      .play()
-      .then(() => {
-        isAutoplayBlocked.value = false;
-        isAudioBuffering.value = false;
-        if (currentRound.value) {
-          jukeboxClient.signalTriviaAudioReady(currentRound.value.roundIndex);
-        }
-      })
-      .catch((err) => {
-        console.error("[trivia-audio] Gagal membuka blokir audio:", err);
-      });
+    startAudiblePlayback(currentRound.value.roundIndex);
   }
 }
 
@@ -241,9 +268,11 @@ function unblockAudio() {
 watch(
   () => triviaState.value?.status,
   (newStatus) => {
-    if (newStatus === "lobby" && !isHost.value && !myPlayer.value) {
+    if (newStatus && newStatus !== "idle" && !isHost.value && !myPlayer.value) {
       jukeboxClient.joinTriviaLobby();
-    } else if (newStatus === "question" && currentRound.value) {
+    }
+    
+    if (newStatus === "question" && currentRound.value) {
       stopRoundTimer();
       const q = currentRound.value;
       remainingSeconds.value = q.durationSec || 20;
@@ -259,7 +288,13 @@ watch(
 
       // Jika server sudah menandai audio siap (misal reconnect)
       if (q.isAudioReady) {
-        startRoundTimer(q.startTime, q.endTime, q.durationSec);
+        startRoundTimer(
+          q.startTime,
+          q.endTime,
+          q.durationSec,
+          q.listenStartTime,
+          q.listenDurationSec
+        );
       }
     } else if (newStatus === "recap" || newStatus === "podium" || newStatus === "idle") {
       stopRoundTimer();
@@ -277,16 +312,17 @@ watch(
   }
 );
 
-// Auto-join guard: pastikan pemain non-host yang melihat modal lobby selalu terdaftar di roster
+// Auto-join & Reconnect guard: pastikan pemain non-host yang melihat modal selalu terdaftar di roster
 watch(
-  () => [triviaState.value?.status, triviaState.value?.players] as const,
-  ([status, players]) => {
-    if (status === "lobby" && !isHost.value && myClientId.value) {
+  () => [props.isOpen, triviaState.value?.status, triviaState.value?.players] as const,
+  ([open, status, players]) => {
+    if (open && status && status !== "idle" && !isHost.value && myClientId.value) {
       if (!players || !players[myClientId.value]) {
         jukeboxClient.joinTriviaLobby();
       }
     }
-  }
+  },
+  { immediate: true }
 );
 
 // Watch jika server mengonfirmasi audioReady pada ronde yang sama
@@ -296,13 +332,38 @@ watch(
     if (ready && triviaState.value?.status === "question") {
       const q = currentRound.value;
       if (q) {
-        startRoundTimer(q.startTime, q.endTime, q.durationSec);
+        startRoundTimer(
+          q.startTime,
+          q.endTime,
+          q.durationSec,
+          q.listenStartTime,
+          q.listenDurationSec
+        );
+        if (localAudio && localAudio.paused) {
+          startAudiblePlayback(q.roundIndex);
+        }
       }
     }
   }
 );
 
-function startRoundTimer(startTime?: number, endTime?: number, durationSec?: number) {
+// Pre-buffer lagu berikutnya begitu ronde berakhir dan masuk ke layar recap 5 detik
+watch(
+  () => triviaState.value?.roundResult,
+  (res) => {
+    if (res?.nextSnippet) {
+      prebufferNextSnippet(res.nextSnippet.trackId, res.nextSnippet.provider, res.nextSnippet.snippetStartSec);
+    }
+  }
+);
+
+function startRoundTimer(
+  startTime?: number,
+  endTime?: number,
+  durationSec?: number,
+  listenStartTime?: number,
+  listenDurationSec?: number
+) {
   stopRoundTimer();
   const q = currentRound.value;
   if (!q) return;
@@ -311,18 +372,43 @@ function startRoundTimer(startTime?: number, endTime?: number, durationSec?: num
   const start = startTime || q.startTime || Date.now();
   const end = endTime || q.endTime || (start + totalDuration * 1000);
 
-  const initialLeftMs = Math.max(0, end - Date.now());
-  remainingSeconds.value = Math.ceil(initialLeftMs / 1000);
-  timerProgressPercent.value = Math.max(0, Math.min(100, (initialLeftMs / (totalDuration * 1000)) * 100));
+  const now = Date.now();
+  if (start > now) {
+    // Sedang dalam fase dengarkan (3 detik pertama)
+    isListeningPhase.value = true;
+    const diffMs = start - now;
+    listeningSecondsLeft.value = Math.max(1, Math.ceil(diffMs / 1000));
+    remainingSeconds.value = totalDuration;
+    timerProgressPercent.value = 100;
+  } else {
+    isListeningPhase.value = false;
+    const initialLeftMs = Math.max(0, end - now);
+    remainingSeconds.value = Math.ceil(initialLeftMs / 1000);
+    timerProgressPercent.value = Math.max(0, Math.min(100, (initialLeftMs / (totalDuration * 1000)) * 100));
+  }
 
   timerInterval = setInterval(() => {
-    const now = Date.now();
-    const leftMs = Math.max(0, end - now);
-    remainingSeconds.value = Math.ceil(leftMs / 1000);
-    timerProgressPercent.value = Math.max(0, Math.min(100, (leftMs / (totalDuration * 1000)) * 100));
+    const currentNow = Date.now();
+    if (start > currentNow) {
+      // Masih dalam fase dengarkan bersama
+      isListeningPhase.value = true;
+      const leftListenMs = start - currentNow;
+      listeningSecondsLeft.value = Math.max(1, Math.ceil(leftListenMs / 1000));
+      remainingSeconds.value = totalDuration;
+      timerProgressPercent.value = 100;
+    } else {
+      // Fase tebak dibuka serempak!
+      if (isListeningPhase.value) {
+        isListeningPhase.value = false;
+        triggerHaptic();
+      }
+      const leftMs = Math.max(0, end - currentNow);
+      remainingSeconds.value = Math.ceil(leftMs / 1000);
+      timerProgressPercent.value = Math.max(0, Math.min(100, (leftMs / (totalDuration * 1000)) * 100));
 
-    if (leftMs <= 0) {
-      stopRoundTimer();
+      if (leftMs <= 0) {
+        stopRoundTimer();
+      }
     }
   }, 100);
 }
@@ -332,6 +418,7 @@ function stopRoundTimer() {
     clearInterval(timerInterval);
     timerInterval = null;
   }
+  isListeningPhase.value = false;
 }
 
 function startPodiumCountdown() {
@@ -358,6 +445,8 @@ function toggleReady() {
   if (!isHost.value && !myPlayer.value) {
     jukeboxClient.joinTriviaLobby();
   }
+  // Buka kunci audio context pada gestur klik tombol Siap
+  primeAudio();
   jukeboxClient.setTriviaReady(!isReady.value);
   triggerHaptic();
 }
@@ -374,10 +463,24 @@ function forceStart() {
   triggerHaptic();
 }
 
+function triggerWaitingNotice() {
+  triggerHaptic();
+  showWaitingAudioNotice.value = true;
+  if (waitingNoticeTimer) clearTimeout(waitingNoticeTimer);
+  waitingNoticeTimer = setTimeout(() => {
+    showWaitingAudioNotice.value = false;
+  }, 2200);
+}
+
 function selectAnswer(optionId: string) {
   if (!isPlayerParticipating.value) return;
   if (hasAnswered.value || triviaState.value?.status !== "question") return;
-  if (!currentRound.value?.isAudioReady) return;
+
+  // Jika audio cuplikan masih dalam proses persiapan/buffering atau fase dengarkan (3s), beri notifikasi ramah & haptic
+  if (!currentRound.value?.isAudioReady || isListeningPhase.value) {
+    triggerWaitingNotice();
+    return;
+  }
 
   const roundIdx = currentRound.value?.roundIndex;
   if (!roundIdx) return;
@@ -386,20 +489,39 @@ function selectAnswer(optionId: string) {
   jukeboxClient.submitTriviaAnswer(roundIdx, optionId);
 }
 
-function toggleHeadsetMode() {
-  isHeadsetEnabled.value = !isHeadsetEnabled.value;
+function setSpeakerChoice(choice: "host" | "self") {
+  speakerChoice.value = choice;
+  try {
+    localStorage.setItem("trivia_speaker_choice", choice);
+  } catch {}
+  showSpeakerPrompt.value = false;
   triggerHaptic();
 
-  if (isHeadsetEnabled.value && triviaState.value?.status === "question" && currentRound.value) {
-    playSnippetAudio(
-      currentRound.value.trackId,
-      currentRound.value.provider,
-      currentRound.value.snippetStartSec,
-      currentRound.value.roundIndex
-    );
-  } else if (!isHeadsetEnabled.value && !isHost.value) {
-    stopLocalAudio();
+  // Beritahu server mode audio pemain untuk barrier synchronization
+  jukeboxClient.setTriviaAudioMode(choice);
+
+  if (choice === "self") {
+    isHeadsetEnabled.value = true;
+    primeAudio();
+    if (triviaState.value?.status === "question" && currentRound.value) {
+      playSnippetAudio(
+        currentRound.value.trackId,
+        currentRound.value.provider,
+        currentRound.value.snippetStartSec,
+        currentRound.value.roundIndex
+      );
+    }
+  } else {
+    isHeadsetEnabled.value = false;
+    if (!isHost.value) {
+      stopLocalAudio();
+    }
   }
+}
+
+function toggleSpeakerChoice() {
+  const nextChoice = isHeadsetEnabled.value ? "host" : "self";
+  setSpeakerChoice(nextChoice);
 }
 
 function triggerHaptic() {
@@ -441,12 +563,13 @@ function handleKeydown(e: KeyboardEvent) {
     return;
   }
 
-  // 1, 2, 3, 4 atau A, B, C, D to pick answer in question mode (hanya jika berpartisipasi)
+  // 1, 2, 3, 4 atau A, B, C, D to pick answer in question mode (hanya jika berpartisipasi dan fase tebak sudah dibuka)
   if (
     isPlayerParticipating.value &&
     triviaState.value.status === "question" &&
     currentRound.value &&
     currentRound.value.isAudioReady &&
+    !isListeningPhase.value &&
     !hasAnswered.value
   ) {
     const opts = currentRound.value.options;
@@ -469,21 +592,52 @@ onMounted(() => {
   const savedVol = localStorage.getItem("trivia_headset_vol");
   if (savedVol) headsetVolume.value = Number(savedVol);
 
+  const savedChoice = localStorage.getItem("trivia_speaker_choice") as "host" | "self" | null;
+  if (savedChoice === "self") {
+    speakerChoice.value = "self";
+    isHeadsetEnabled.value = true;
+    showSpeakerPrompt.value = false;
+    jukeboxClient.setTriviaAudioMode("self");
+  } else if (savedChoice === "host") {
+    speakerChoice.value = "host";
+    isHeadsetEnabled.value = false;
+    showSpeakerPrompt.value = false;
+    jukeboxClient.setTriviaAudioMode("host");
+  } else if (!isHost.value) {
+    showSpeakerPrompt.value = true;
+    jukeboxClient.setTriviaAudioMode("host");
+  }
+
   unsubTimerStart = jukeboxClient.onTriviaTimerStart((payload) => {
     if (currentRound.value && currentRound.value.roundIndex === payload.roundIndex) {
-      startRoundTimer(payload.startTime, payload.endTime, payload.durationSec);
+      startRoundTimer(
+        payload.startTime,
+        payload.endTime,
+        payload.durationSec,
+        payload.listenStartTime,
+        payload.listenDurationSec
+      );
+      if (localAudio && localAudio.paused) {
+        startAudiblePlayback(payload.roundIndex);
+      }
     }
   });
 
-  // Jika komponen dimuat saat berada di lobby dan belum bergabung
-  if (triviaState.value?.status === "lobby" && !isHost.value && !myPlayer.value) {
+  // Jika komponen dimuat saat game tebak lagu aktif dan belum bergabung
+  if (triviaState.value?.status && triviaState.value.status !== "idle" && !isHost.value && !myPlayer.value) {
     jukeboxClient.joinTriviaLobby();
   }
 
   // Jika komponen dimuat saat ronde tebak lagu sudah berjalan
   if (triviaState.value?.status === "question" && currentRound.value) {
     if (currentRound.value.isAudioReady) {
-      startRoundTimer(currentRound.value.startTime, currentRound.value.endTime, currentRound.value.durationSec);
+      startRoundTimer(
+        currentRound.value.startTime,
+        currentRound.value.endTime,
+        currentRound.value.durationSec,
+        currentRound.value.listenStartTime,
+        currentRound.value.listenDurationSec
+      );
     }
     playSnippetAudio(
       currentRound.value.trackId,
@@ -493,6 +647,18 @@ onMounted(() => {
     );
   }
 });
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open && !isHost.value) {
+      const saved = localStorage.getItem("trivia_speaker_choice");
+      if (!saved) {
+        showSpeakerPrompt.value = true;
+      }
+    }
+  }
+);
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
@@ -509,7 +675,7 @@ onBeforeUnmount(() => {
     class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-obsidian-950/90 backdrop-blur-2xl animate-in fade-in duration-200"
   >
     <!-- Modal Card Container -->
-    <div class="glass-panel w-full max-w-4xl h-[96dvh] sm:h-[88vh] flex flex-col rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden bg-obsidian-900/95 text-slate-100">
+    <div class="glass-panel w-full max-w-4xl h-[96dvh] sm:h-[88vh] flex flex-col rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden bg-obsidian-900/95 text-slate-100 relative">
       
       <!-- Top Navigation & Controls Bar -->
       <header class="px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3 shrink-0 bg-white/[0.02]">
@@ -557,21 +723,20 @@ onBeforeUnmount(() => {
             <span>Speaker Ruangan</span>
           </div>
 
-          <!-- Toggle Mode Headset (Main dari jauh untuk peserta non-host) -->
+          <!-- Toggle Mode Speaker (Speaker Sendiri vs Speaker Host) -->
           <button
             v-if="!isHost"
             type="button"
             class="h-8 px-2.5 sm:px-3 rounded-full border text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
             :class="isHeadsetEnabled
               ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
-              : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'"
-            title="Dengarkan cuplikan audio di earphone/HP jika kamu main jauh dari speaker kantor"
-            @click="toggleHeadsetMode"
+              : 'bg-white/5 border-white/10 text-slate-300 hover:text-white hover:bg-white/10'"
+            :title="isHeadsetEnabled ? 'Cuplikan audio berbunyi di speaker HP kamu. Klik untuk alih ke Speaker Host.' : 'Mendengarkan dari speaker komputer host. Klik untuk bunyikan di HP.'"
+            @click="toggleSpeakerChoice"
           >
-            <span>🎧</span>
-            <span class="hidden sm:inline">Headset</span>
-            <span class="text-[10px] px-1 py-0.2 rounded font-mono" :class="isHeadsetEnabled ? 'bg-emerald-500/30 text-emerald-200' : 'bg-white/10'">
-              {{ isHeadsetEnabled ? 'ON' : 'OFF' }}
+            <span>{{ isHeadsetEnabled ? '🔊' : '📢' }}</span>
+            <span class="text-[11px] font-black">
+              {{ isHeadsetEnabled ? 'Speaker Sendiri' : 'Speaker Host' }}
             </span>
           </button>
 
@@ -634,6 +799,65 @@ onBeforeUnmount(() => {
                 {{ isHostPlaying ? 'ON' : 'OFF' }}
               </span>
             </button>
+          </div>
+
+          <!-- Speaker Selection Card (Pilihan Speaker Host vs Speaker Sendiri untuk Non-Host) -->
+          <div
+            v-if="!isHost"
+            class="bg-white/[0.03] border border-white/10 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md"
+          >
+            <div class="flex items-center gap-3 w-full sm:w-auto min-w-0">
+              <div
+                class="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 border"
+                :class="isHeadsetEnabled
+                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                  : 'bg-indigo-500/20 border-indigo-400/30 text-indigo-300'"
+              >
+                <span>{{ isHeadsetEnabled ? '🔊' : '📢' }}</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <h4 class="text-xs sm:text-sm font-black text-white">
+                    Sumber Suara:
+                  </h4>
+                  <span
+                    class="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase font-mono"
+                    :class="isHeadsetEnabled ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/40' : 'bg-indigo-500/30 text-indigo-200 border border-indigo-400/40'"
+                  >
+                    {{ isHeadsetEnabled ? 'Speaker Sendiri' : 'Speaker Host' }}
+                  </span>
+                </div>
+                <p class="text-[11px] text-slate-400 truncate">
+                  {{ isHeadsetEnabled ? 'Audio lagu berbunyi langsung di HP / earphone kamu.' : 'Mendengarkan audio dari speaker komputer host / ruangan.' }}
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <button
+                type="button"
+                class="flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                :class="!isHeadsetEnabled
+                  ? 'bg-indigo-600 text-white border-indigo-400 shadow-[0_0_12px_rgba(99,102,241,0.3)]'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'"
+                @click="setSpeakerChoice('host')"
+              >
+                <span>📢</span>
+                <span>Speaker Host</span>
+              </button>
+
+              <button
+                type="button"
+                class="flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                :class="isHeadsetEnabled
+                  ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'"
+                @click="setSpeakerChoice('self')"
+              >
+                <span>🔊</span>
+                <span>Speaker Sendiri</span>
+              </button>
+            </div>
           </div>
 
           <!-- Players Roster Grid -->
@@ -762,17 +986,31 @@ onBeforeUnmount(() => {
                     <span>Memuat cuplikan audio... Harap tunggu sebentar 🎵</span>
                   </span>
                 </template>
+                <template v-else-if="isListeningPhase">
+                  <span class="flex items-center gap-1.5 text-amber-300 font-black animate-pulse">
+                    <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span>🔒 Dengarkan baik-baik... ({{ listeningSecondsLeft }}s)</span>
+                  </span>
+                </template>
                 <template v-else>
-                  <span>Tebak Lagu yang Sedang Berbunyi:</span>
+                  <span class="text-indigo-300 font-bold flex items-center gap-1.5">
+                    <span>⚡ Silakan Tebak Lagu yang Sedang Berbunyi:</span>
+                  </span>
                 </template>
               </span>
               
               <span
-                v-if="currentRound.isAudioReady"
+                v-if="currentRound.isAudioReady && !isListeningPhase"
                 class="font-mono text-sm sm:text-base font-black tabular-nums transition-colors"
                 :class="remainingSeconds <= 5 ? 'text-rose-400 animate-pulse' : 'text-emerald-400'"
               >
                 ⏱️ {{ remainingSeconds }}s
+              </span>
+              <span
+                v-else-if="isListeningPhase"
+                class="font-mono text-xs text-amber-300 font-black tracking-wider uppercase animate-pulse"
+              >
+                🎧 Dengarkan ({{ listeningSecondsLeft }}s)
               </span>
               <span
                 v-else
@@ -785,12 +1023,16 @@ onBeforeUnmount(() => {
             <!-- Timer Progress Bar -->
             <div class="w-full h-2.5 sm:h-3 rounded-full bg-slate-800/80 overflow-hidden border border-white/10 shadow-inner">
               <div
-                v-if="currentRound.isAudioReady"
+                v-if="currentRound.isAudioReady && !isListeningPhase"
                 class="h-full transition-all duration-100 rounded-full"
                 :class="remainingSeconds <= 5
                   ? 'bg-gradient-to-r from-amber-500 to-rose-500'
                   : 'bg-gradient-to-r from-cyan-400 via-indigo-500 to-pink-500'"
                 :style="{ width: `${timerProgressPercent}%` }"
+              ></div>
+              <div
+                v-else-if="isListeningPhase"
+                class="h-full w-full bg-gradient-to-r from-amber-500/50 via-yellow-400/70 to-amber-500/50 animate-pulse rounded-full"
               ></div>
               <div
                 v-else
@@ -802,29 +1044,35 @@ onBeforeUnmount(() => {
           <!-- Vinyl Disc & Waveform Audio Visualizer Graphic -->
           <div class="flex-1 flex flex-col items-center justify-center my-1 sm:my-3">
             <div
-              class="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-slate-950 border-4 border-slate-800 shadow-[0_0_30px_rgba(99,102,241,0.25)] flex items-center justify-center"
+              class="relative w-20 h-20 sm:w-32 sm:h-32 rounded-full bg-slate-950 border-4 border-slate-800 shadow-[0_0_30px_rgba(99,102,241,0.25)] flex items-center justify-center"
               :class="currentRound.isAudioReady ? 'animate-[spin_4s_linear_infinite]' : 'opacity-70'"
             >
               <!-- Vinyl Grooves -->
               <div class="absolute inset-2 rounded-full border border-slate-700/50"></div>
-              <div class="absolute inset-5 rounded-full border border-slate-700/40"></div>
-              <div class="absolute inset-8 rounded-full border border-slate-700/30"></div>
+              <div class="absolute inset-4 sm:inset-5 rounded-full border border-slate-700/40"></div>
+              <div class="absolute inset-6 sm:inset-8 rounded-full border border-slate-700/30"></div>
               <!-- Vinyl Center Label -->
-              <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center text-white text-xs shadow-md">
+              <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center text-white text-xs shadow-md">
                 <span>🎵</span>
               </div>
             </div>
 
             <!-- Audio Playing Status Indicator -->
-            <div class="mt-3 flex items-center gap-1.5 text-xs font-semibold">
+            <div class="mt-2.5 flex items-center gap-1.5 text-xs font-semibold">
               <template v-if="!currentRound.isAudioReady">
                 <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-                <span class="text-amber-300">Sinkronisasi audio ke semua perangkat...</span>
+                <span class="text-amber-300">Sinkronisasi cuplikan audio...</span>
+              </template>
+              <template v-else-if="isListeningPhase">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                <span class="text-amber-200 font-bold">
+                  {{ isHost ? 'Audio berputar di speaker ruangan (Dengarkan bersama 3s) 🔊' : (isHeadsetEnabled ? 'Audio berputar di HP (Dengarkan bersama 3s) 🔊' : 'Mendengarkan dari Speaker Host (3s) 📢') }}
+                </span>
               </template>
               <template v-else>
                 <span class="w-2 h-2 rounded-full bg-pink-500 animate-ping"></span>
                 <span class="text-slate-300">
-                  {{ isHost ? 'Audio berputar di speaker ruangan 🔊' : (isHeadsetEnabled ? 'Audio berputar di headset 🎧' : 'Dengarkan audio di speaker ruangan 📢') }}
+                  {{ isHost ? 'Audio berputar di speaker ruangan 🔊' : (isHeadsetEnabled ? 'Audio berputar di HP (Speaker Sendiri) 🔊' : 'Mendengarkan dari Speaker Host 📢') }}
                 </span>
               </template>
             </div>
@@ -833,11 +1081,11 @@ onBeforeUnmount(() => {
             <button
               v-if="isAutoplayBlocked"
               type="button"
-              class="mt-3 px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-xl cursor-pointer active:scale-95 animate-bounce"
+              class="mt-2.5 px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-xl cursor-pointer active:scale-95 animate-bounce"
               @click="unblockAudio"
             >
               <span>🔊</span>
-              <span>Klik di sini untuk membunyikan suara!</span>
+              <span>Klik di sini untuk membunyikan suara di HP!</span>
             </button>
 
             <!-- Participant status vs Host MC status -->
@@ -855,6 +1103,24 @@ onBeforeUnmount(() => {
             </template>
           </div>
 
+          <!-- Floating Notice saat pengguna tap tombol ketika audio masih proses buffer -->
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 -translate-y-2"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-2"
+          >
+            <div
+              v-if="showWaitingAudioNotice"
+              class="py-1 px-3.5 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-200 text-xs font-bold flex items-center justify-center gap-1.5 shadow-lg mx-auto text-center animate-bounce mb-1"
+            >
+              <span>🎵</span>
+              <span>{{ isListeningPhase ? 'Dengarkan dulu lagunya baik-baik... 🎧' : 'Tunggu sebentar, cuplikan lagu sedang dimulai...' }}</span>
+            </div>
+          </Transition>
+
           <!-- 4 Multiple Choice Interactive Cards -->
           <!-- A. Peserta yang ikut bermain -->
           <div v-if="isPlayerParticipating" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5 pb-2">
@@ -862,18 +1128,22 @@ onBeforeUnmount(() => {
               v-for="(opt, idx) in currentRound.options"
               :key="opt.id"
               type="button"
-              :disabled="hasAnswered || !currentRound.isAudioReady"
-              class="min-h-[56px] sm:min-h-[64px] p-3 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer select-none"
+              :disabled="hasAnswered || isListeningPhase"
+              class="min-h-[56px] sm:min-h-[64px] p-3 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all duration-200 flex items-center justify-between gap-3 select-none"
               :class="[
                 selectedOptionId === opt.id
                   ? 'bg-gradient-to-r from-indigo-600/40 to-pink-600/40 border-indigo-400 text-white shadow-[0_0_20px_rgba(99,102,241,0.35)] scale-[1.01]'
-                  : hasAnswered || !currentRound.isAudioReady
+                  : hasAnswered
                     ? 'opacity-40 bg-white/[0.02] border-white/5 cursor-not-allowed'
-                    : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 hover:border-indigo-400/50 active:scale-[0.98]'
+                    : isListeningPhase
+                      ? 'opacity-70 bg-white/[0.03] border-white/10 cursor-not-allowed'
+                      : !currentRound.isAudioReady
+                        ? 'bg-white/[0.04] border-white/10 opacity-75 hover:border-amber-400/40 cursor-pointer'
+                        : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 hover:border-indigo-400/50 cursor-pointer active:scale-[0.98]'
               ]"
               @click="selectAnswer(opt.id)"
             >
-              <div class="flex items-center gap-3 min-w-0">
+              <div class="flex items-center gap-3 min-w-0 flex-1">
                 <!-- PC / Keyboard Shortcut Pill [1, 2, 3, 4] -->
                 <div
                   class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-mono font-black text-xs sm:text-sm shrink-0 shadow-sm"
@@ -882,7 +1152,13 @@ onBeforeUnmount(() => {
                   {{ ['A', 'B', 'C', 'D'][idx] }}
                 </div>
 
-                <div class="flex flex-col min-w-0">
+                <!-- Jika fase mendengarkan (poin 1 & 3): samarkan teks dengan placeholder misteri yang berdenyut -->
+                <div v-if="isListeningPhase" class="flex flex-col min-w-0 flex-1 gap-1.5 animate-pulse">
+                  <div class="h-3.5 bg-white/20 rounded-md w-3/4"></div>
+                  <div class="h-2.5 bg-white/10 rounded-md w-1/2"></div>
+                </div>
+                <!-- Saat tombol dibuka: tampilkan judul & penyanyi -->
+                <div v-else class="flex flex-col min-w-0 transition-opacity duration-300">
                   <span class="font-bold text-xs sm:text-sm text-slate-100 truncate leading-snug">
                     {{ opt.title }}
                   </span>
@@ -894,6 +1170,7 @@ onBeforeUnmount(() => {
 
               <div class="shrink-0">
                 <span v-if="selectedOptionId === opt.id" class="text-base sm:text-lg">✅</span>
+                <span v-else-if="isListeningPhase" class="text-xs text-amber-300/70 font-mono">🔒</span>
                 <span v-else class="text-[10px] font-mono text-slate-500 hidden sm:inline">[{{ idx + 1 }}]</span>
               </div>
             </button>
@@ -906,12 +1183,16 @@ onBeforeUnmount(() => {
               :key="opt.id"
               class="min-h-[56px] sm:min-h-[64px] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/10 bg-white/[0.04] flex items-center justify-between gap-3 shadow-md"
             >
-              <div class="flex items-center gap-3 min-w-0">
+              <div class="flex items-center gap-3 min-w-0 flex-1">
                 <div class="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center font-mono font-black text-sm text-indigo-300 shrink-0">
                   {{ ['A', 'B', 'C', 'D'][idx] }}
                 </div>
 
-                <div class="flex flex-col min-w-0">
+                <div v-if="isListeningPhase" class="flex flex-col min-w-0 flex-1 gap-1.5 animate-pulse">
+                  <div class="h-4 bg-white/20 rounded-md w-3/4"></div>
+                  <div class="h-3 bg-white/10 rounded-md w-1/2"></div>
+                </div>
+                <div v-else class="flex flex-col min-w-0">
                   <span class="font-black text-xs sm:text-sm text-white truncate leading-snug">
                     {{ opt.title }}
                   </span>
@@ -921,7 +1202,8 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <span class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+              <span v-if="isListeningPhase" class="text-xs text-amber-300/70 font-mono">🔒</span>
+              <span v-else class="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
                 Pilihan {{ ['A', 'B', 'C', 'D'][idx] }}
               </span>
             </div>
@@ -1086,6 +1368,64 @@ onBeforeUnmount(() => {
         </div>
 
       </main>
+
+      <!-- Speaker Choice Confirmation Modal / Overlay (Speaker Host vs Speaker Sendiri) -->
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0 scale-95"
+        enter-to-class="opacity-100 scale-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100 scale-100"
+        leave-to-class="opacity-0 scale-95"
+      >
+        <div
+          v-if="showSpeakerPrompt && !isHost"
+          class="absolute inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-obsidian-950/90 backdrop-blur-md"
+        >
+          <div class="glass-panel w-full max-w-md p-5 sm:p-6 rounded-3xl border border-indigo-500/30 bg-obsidian-900/95 flex flex-col text-center shadow-2xl space-y-4">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center text-2xl mx-auto shadow-lg">
+              🎧
+            </div>
+
+            <div class="space-y-1.5">
+              <h3 class="text-base sm:text-lg font-black text-white tracking-tight">
+                Pilih Sumber Suara Tebak Lagu
+              </h3>
+              <p class="text-xs text-slate-300 leading-relaxed">
+                Ingin mendengarkan cuplikan lagu dari mana? Kamu bisa mengubahnya kapan saja di menu atas.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <!-- Option 1: Speaker Host -->
+              <button
+                type="button"
+                class="p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 transition cursor-pointer active:scale-95 bg-white/[0.04] hover:bg-white/[0.08] border-white/15 text-slate-200 hover:border-indigo-400"
+                @click="setSpeakerChoice('host')"
+              >
+                <span class="text-2xl">📢</span>
+                <span class="text-xs font-black text-white text-center">Speaker Host</span>
+                <span class="text-[10px] text-slate-400 text-center leading-tight">Dengar dari speaker utama host</span>
+              </button>
+
+              <!-- Option 2: Speaker Sendiri -->
+              <button
+                type="button"
+                class="p-4 rounded-2xl border flex flex-col items-center justify-center gap-2 transition cursor-pointer active:scale-95 bg-gradient-to-br from-indigo-600/30 to-emerald-600/30 border-emerald-400/50 text-white shadow-lg shadow-emerald-500/10 hover:border-emerald-300"
+                @click="setSpeakerChoice('self')"
+              >
+                <span class="text-2xl">🔊</span>
+                <span class="text-xs font-black text-emerald-300 text-center">Speaker Sendiri</span>
+                <span class="text-[10px] text-slate-300 text-center leading-tight">Putar lagu langsung di HP / earphone</span>
+              </button>
+            </div>
+
+            <div class="text-[10px] text-slate-400 pt-1">
+              Tips: Pilih "Speaker Sendiri" jika kamu bermain jauh dari komputer Host.
+            </div>
+          </div>
+        </div>
+      </Transition>
 
     </div>
   </div>

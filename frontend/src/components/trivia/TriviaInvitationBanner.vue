@@ -39,8 +39,13 @@ const categoryName = computed(() => {
   }
 });
 
+const emit = defineEmits<{
+  (e: "join"): void;
+}>();
+
 function join() {
   jukeboxClient.joinTriviaLobby();
+  emit("join");
 }
 
 function dismiss() {

@@ -55,6 +55,8 @@ export interface TriviaPlayer {
   selectedOptionId?: string;
   lastAnswerCorrect?: boolean;
   lastAnswerPoints?: number;
+  audioOutputMode?: "host" | "self";
+  isOnline?: boolean;
   joinedAt: number;
 }
 
@@ -68,6 +70,8 @@ export interface TriviaQuestion {
   options: TriviaOption[]; // 4 opsi acak
   startTime: number;
   endTime: number;
+  listenDurationSec?: number;
+  listenStartTime?: number;
   isAudioReady?: boolean;
 }
 
@@ -88,6 +92,12 @@ export interface TriviaRoundResult {
   correctArtist: string;
   trackId: string;
   playerResults: TriviaPlayerRoundResult[];
+  nextSnippet?: {
+    trackId: string;
+    provider: AudioProvider;
+    snippetStartSec: number;
+    durationSec: number;
+  };
 }
 
 export interface TriviaPodiumEntry {

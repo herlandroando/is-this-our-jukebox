@@ -5,7 +5,7 @@ import { getAdminToken, verifyAdminToken } from "./adminToken.ts";
 import { getLanIPv4 } from "./lan.ts";
 import { openBrowser } from "./openBrowser.ts";
 import { searchTracks, getRelatedTracks } from "./search/index.ts";
-import { resolveStreamUrl, invalidateStreamCache } from "./stream/resolver.ts";
+import { resolveStreamUrl, invalidateStreamCache, clearAllStreamCache } from "./stream/resolver.ts";
 import { getStaticMap } from "./static.ts";
 import { wsHub, type WsUserData } from "./ws/server.ts";
 import { queueStore } from "./queue/store.ts";
@@ -16,10 +16,51 @@ import { triviaGameManager } from "./trivia/gameManager.ts";
 import { previewPlaylist } from "./trivia/playlistService.ts";
 import type { AudioProvider } from "./types.ts";
 import type { RhythmScoreSubmission } from "./rhythm/types.ts";
+import {
+  getYouTubeCookieStatus,
+  startYouTubeLogin,
+  cancelYouTubeLogin,
+  deleteYouTubeCookies,
+  isLoginInProgress,
+  subscribeYouTubeStatus,
+} from "./auth/youtubeLogin.ts";
 
 const app = new Hono();
 
 app.use("*", cors());
+
+// Subscribe to YouTube cookie status changes and broadcast to all connected clients
+subscribeYouTubeStatus((status) => {
+  wsHub.broadcast({
+    type: "youtubeAuthStatus",
+    status,
+  });
+});
+
+// YouTube Authentication & Cookie Management
+app.get("/api/auth/youtube/status", (c) => {
+  return c.json(getYouTubeCookieStatus());
+});
+
+app.post("/api/auth/youtube/start-login", async (c) => {
+  try {
+    const res = await startYouTubeLogin();
+    return c.json(res);
+  } catch (err: any) {
+    return c.json({ success: false, message: err?.message || "Gagal memulai login YouTube" }, 500);
+  }
+});
+
+app.post("/api/auth/youtube/cancel-login", (c) => {
+  cancelYouTubeLogin();
+  return c.json({ success: true });
+});
+
+app.delete("/api/auth/youtube/cookies", (c) => {
+  const ok = deleteYouTubeCookies();
+  clearAllStreamCache();
+  return c.json({ success: ok });
+});
 
 app.get("/api/trivia/categories", (c) => {
   return c.json(triviaGameManager.getCategories());
@@ -375,6 +416,20 @@ app.get("/api/stream/:id", async (c) => {
 
     const contentLength = finalRes.headers.get("content-length");
     if (contentLength) responseHeaders.set("Content-Length", contentLength);
+
+    // CRITICAL FIX for Bun HTTP 206 Partial Content:
+    // When Bun streams a ReadableStream with status 206, it strips Content-Length and forces
+    // Transfer-Encoding: chunked. RFC 7230/9110 strictly forbids chunked encoding on 206 responses,
+    // which causes HTML5 <audio> / Chromium / WebKit to throw "MEDIA_ELEMENT_ERROR: Format error".
+    // Reading the slice into an ArrayBuffer preserves the exact Content-Length without chunking.
+    if (finalRes.status === 206 || rangeHeader) {
+      const buf = await finalRes.arrayBuffer();
+      responseHeaders.set("Content-Length", String(buf.byteLength));
+      return new Response(buf, {
+        status: finalRes.status,
+        headers: responseHeaders,
+      });
+    }
 
     return new Response(finalRes.body, {
       status: finalRes.status,

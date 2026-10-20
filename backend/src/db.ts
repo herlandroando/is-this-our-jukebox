@@ -923,6 +923,31 @@ class JukeboxDatabase {
     }
   }
 
+  public getTracksByArtist(artist: string, excludeTitle = "", limit = 5): Array<{ title: string; artist: string }> {
+    try {
+      const cleanArtist = artist.trim().toLowerCase();
+      const cleanEx = excludeTitle.trim().toLowerCase();
+      if (!cleanArtist) return [];
+
+      const rows = this.db.prepare(`
+        SELECT title, artist FROM (
+          SELECT title, artist FROM track_stats WHERE lower(artist) LIKE ?
+          UNION
+          SELECT title, artist FROM track_metadata_cache WHERE lower(artist) LIKE ?
+          UNION
+          SELECT track_title as title, track_artist as artist FROM rhythm_scores WHERE lower(track_artist) LIKE ?
+        )
+        WHERE lower(title) NOT LIKE ?
+        LIMIT ?
+      `).all(`%${cleanArtist}%`, `%${cleanArtist}%`, `%${cleanArtist}%`, `%${cleanEx}%`, limit) as Array<{ title: string; artist: string }>;
+
+      return rows || [];
+    } catch (err) {
+      console.warn("[db] getTracksByArtist error:", err);
+      return [];
+    }
+  }
+
   public close() {
     this.db.close();
   }
