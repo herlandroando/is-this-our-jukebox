@@ -34,6 +34,8 @@ let currentTrackId: string | null = null;
 let hasDispatchedCrossfade = false;
 let pauseTimer: number | null = null;
 let crossfadeCleanupTimer: number | null = null;
+let trackRetryCount = 0;
+let retryTimeoutTimer: number | null = null;
 
 let audioCtx: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
@@ -217,11 +219,21 @@ watch(
       audioRefB.value?.removeAttribute("src");
       currentTrackId = null;
       hasDispatchedCrossfade = false;
+      trackRetryCount = 0;
+      if (retryTimeoutTimer !== null) {
+        clearTimeout(retryTimeoutTimer);
+        retryTimeoutTimer = null;
+      }
       return;
     }
 
     if (newId === currentTrackId) return;
     currentTrackId = newId;
+    trackRetryCount = 0;
+    if (retryTimeoutTimer !== null) {
+      clearTimeout(retryTimeoutTimer);
+      retryTimeoutTimer = null;
+    }
 
     const outgoingDeck = activeDeck.value;
     const incomingDeck = outgoingDeck === "A" ? "B" : "A";
@@ -453,9 +465,33 @@ function onEnded(deck: "A" | "B") {
 function onError(deck: "A" | "B", e: Event) {
   if (deck !== activeDeck.value) return;
   const { audio } = getDeck(deck);
-  const mediaError = audio?.error;
+  if (!audio) return;
+  const mediaError = audio.error;
   const msg = mediaError ? `Code ${mediaError.code}: ${mediaError.message}` : "Stream load error";
-  console.warn(`[audio] Audio playback error on Deck ${deck}:`, msg, e);
+  console.warn(`[audio] Audio playback error on Deck ${deck} (attempt ${trackRetryCount + 1}):`, msg, e);
+
+  // Allow up to 2 retries for transient stream/probe hiccups before declaring permanent failure
+  if (trackRetryCount < 2 && props.track) {
+    trackRetryCount++;
+    console.log(`[audio] Retrying stream for "${props.track.title}" in 400ms (attempt ${trackRetryCount})...`);
+    if (retryTimeoutTimer !== null) clearTimeout(retryTimeoutTimer);
+    retryTimeoutTimer = window.setTimeout(() => {
+      if (deck === activeDeck.value && props.track && audio) {
+        const streamUrl = getStreamUrl(props.track.id, props.track.provider, props.track.permalink);
+        const retryUrl = `${streamUrl}&retry=${trackRetryCount}_${Date.now()}`;
+        audio.src = retryUrl;
+        audio.load();
+        if (props.isPlaying) {
+          void audio.play().catch((err) => {
+            console.warn("[audio] Play rejected during retry:", err);
+          });
+        }
+      }
+      retryTimeoutTimer = null;
+    }, 400);
+    return;
+  }
+
   jukeboxClient.send({ type: "trackError", error: msg });
 }
 
@@ -519,6 +555,10 @@ onBeforeUnmount(() => {
   if (crossfadeCleanupTimer !== null) {
     clearTimeout(crossfadeCleanupTimer);
     crossfadeCleanupTimer = null;
+  }
+  if (retryTimeoutTimer !== null) {
+    clearTimeout(retryTimeoutTimer);
+    retryTimeoutTimer = null;
   }
   if (audioRefA.value) {
     audioRefA.value.pause();

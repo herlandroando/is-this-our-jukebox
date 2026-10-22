@@ -1078,6 +1078,10 @@ function handleHitZone(zone: HitZone, ev: MouseEvent) {
   animation: eqBounce var(--beat-speed, 0.8s) ease-in-out infinite alternate;
 }
 
+g[ref] {
+  will-change: transform;
+}
+
 @keyframes eqBounce {
   0% {
     transform: scaleY(0.28);

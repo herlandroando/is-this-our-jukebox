@@ -11,6 +11,7 @@ interface CachedStream {
 
 export const MAX_STREAM_CACHE_SIZE = 150;
 export const streamCache = new Map<string, CachedStream>();
+const inFlightResolutions = new Map<string, Promise<string | null>>();
 
 export function addToStreamCache(id: string, entry: CachedStream) {
   if (streamCache.has(id)) {
@@ -36,6 +37,7 @@ export function invalidateStreamCache(id: string) {
 
 export function clearAllStreamCache() {
   streamCache.clear();
+  inFlightResolutions.clear();
 }
 
 function getSoundcloudClass(): typeof Soundcloud {
@@ -250,7 +252,7 @@ async function resolveSoundCloudUrl(trackIdOrUrl: string, signal?: AbortSignal):
 }
 
 /**
- * Main stream resolver with caching.
+ * Main stream resolver with caching and in-flight Promise deduplication.
  */
 export async function resolveStreamUrl(
   id: string,
@@ -273,26 +275,55 @@ export async function resolveStreamUrl(
     streamCache.delete(id);
   }
 
-  let resolvedUrl: string | null = null;
+  // Deduplicate in-flight resolutions for identical stream requests
+  const flightKey = `${provider}:${id}`;
+  let resolutionPromise = inFlightResolutions.get(flightKey);
 
-  if (provider === "sc") {
-    resolvedUrl = await resolveSoundCloudUrl(permalink || id, signal);
-  } else {
-    resolvedUrl = await resolveYouTubeUrl(id, signal);
+  if (!resolutionPromise || forceFresh) {
+    resolutionPromise = (async () => {
+      try {
+        let resolvedUrl: string | null = null;
+        if (provider === "sc") {
+          resolvedUrl = await resolveSoundCloudUrl(permalink || id);
+        } else {
+          resolvedUrl = await resolveYouTubeUrl(id);
+        }
+
+        // Reject HLS/m3u8 manifest URLs since native HTML5 <audio> on Chromium desktop cannot decode them
+        if (resolvedUrl && (resolvedUrl.includes(".m3u8") || resolvedUrl.includes("/hls/"))) {
+          console.warn(`[resolver] Filtered out HLS stream for ${id}: progressive audio stream required`);
+          resolvedUrl = null;
+        }
+
+        if (resolvedUrl) {
+          // Cache for 45 minutes with bounded size
+          addToStreamCache(id, {
+            url: resolvedUrl,
+            provider,
+            expiresAt: Date.now() + 45 * 60 * 1000,
+          });
+        }
+
+        return resolvedUrl;
+      } finally {
+        inFlightResolutions.delete(flightKey);
+      }
+    })();
+
+    inFlightResolutions.set(flightKey, resolutionPromise);
   }
 
-  if (signal?.aborted) return null;
-
-  if (resolvedUrl) {
-    // Cache for 45 minutes with bounded size
-    addToStreamCache(id, {
-      url: resolvedUrl,
-      provider,
-      expiresAt: Date.now() + 45 * 60 * 1000,
-    });
+  if (signal) {
+    if (signal.aborted) return null;
+    return await Promise.race([
+      resolutionPromise,
+      new Promise<null>((resolve) => {
+        signal.addEventListener("abort", () => resolve(null), { once: true });
+      }),
+    ]);
   }
 
-  return resolvedUrl;
+  return await resolutionPromise;
 }
 
 /**

@@ -417,3 +417,10 @@ defineProps<{
     </g>
   </g>
 </template>
+
+<style scoped>
+.jukechan-arms g {
+  transition: transform 0.08s linear;
+  will-change: transform;
+}
+</style>

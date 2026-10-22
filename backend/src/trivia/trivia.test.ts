@@ -54,7 +54,7 @@ describe("Trivia Game Manager & Smart Decoys", () => {
     (mgr as any).currentRoundIndex = 1;
     (mgr as any).correctAnswers.set(1, "opt-1-correct");
 
-    const question = {
+    const question: import("./types.ts").TriviaQuestion = {
       roundIndex: 1,
       totalRounds: 5,
       trackId: "track-123",
@@ -115,6 +115,12 @@ describe("Trivia Game Manager & Smart Decoys", () => {
       artist: "Ari Lasso",
       requestedBy: "Tester",
       requestedAt: Date.now(),
+      votes: 1,
+      voters: [],
+      votedIps: [],
+      status: "played",
+      duration: 180,
+      thumbnail: "",
     });
     jukeboxDb.recordTrackPlayed({
       queueId: "q-2",
@@ -124,6 +130,12 @@ describe("Trivia Game Manager & Smart Decoys", () => {
       artist: "Ari Lasso",
       requestedBy: "Tester",
       requestedAt: Date.now(),
+      votes: 1,
+      voters: [],
+      votedIps: [],
+      status: "played",
+      duration: 180,
+      thumbnail: "",
     });
 
     const tracks = jukeboxDb.getTracksByArtist("Ari Lasso", "Hampa", 5);

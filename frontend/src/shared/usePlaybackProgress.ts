@@ -36,11 +36,13 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
   let animFrameId: number | null = null;
   let lastSyncServerTime = 0;
   let lastSyncTimestamp = performance.now();
+  let lastProgressUpdateMs = 0;
   let cleanups: Array<() => void> = [];
 
   function startLoop() {
     if (animFrameId === null && isPlaying.value && track.value) {
       lastSyncTimestamp = performance.now();
+      lastProgressUpdateMs = 0;
       animFrameId = requestAnimationFrame(tick);
     }
   }
@@ -57,12 +59,16 @@ export function usePlaybackProgress(options: PlaybackProgressOptions) {
       animFrameId = null;
       return;
     }
+    const now = performance.now();
     if (!isScrubbing.value) {
-      const now = performance.now();
-      const elapsed = (now - lastSyncTimestamp) / 1000;
-      const dur = duration.value;
-      const estimated = lastSyncServerTime + elapsed;
-      currentTime.value = dur > 0 ? Math.min(dur, Math.max(0, estimated)) : Math.max(0, estimated);
+      // Throttle Vue reactivity updates to 10Hz (~100ms) to prevent 60fps re-rendering across whole UI tree
+      if (now - lastProgressUpdateMs >= 100) {
+        lastProgressUpdateMs = now;
+        const elapsed = (now - lastSyncTimestamp) / 1000;
+        const dur = duration.value;
+        const estimated = lastSyncServerTime + elapsed;
+        currentTime.value = dur > 0 ? Math.min(dur, Math.max(0, estimated)) : Math.max(0, estimated);
+      }
     }
     animFrameId = requestAnimationFrame(tick);
   }

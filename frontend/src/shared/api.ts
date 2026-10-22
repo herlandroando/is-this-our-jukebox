@@ -1,4 +1,4 @@
-import type { AudioProvider, LyricsData, SearchResult, TopTrackResult } from "./types.ts";
+import type { AudioProvider, LyricsData, SearchFilterProvider, SearchResult, TopTrackResult } from "./types.ts";
 
 export interface WhoamiResponse {
   lanIp: string;
@@ -42,7 +42,7 @@ export async function getRelatedTracks(
   return await res.json();
 }
 
-export async function searchTracks(query: string, provider?: AudioProvider, signal?: AbortSignal): Promise<SearchResult[]> {
+export async function searchTracks(query: string, provider?: SearchFilterProvider | AudioProvider, signal?: AbortSignal): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q: query });
   if (provider) params.set("p", provider);
 

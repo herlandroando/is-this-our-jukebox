@@ -12,6 +12,7 @@ import { searchFallback } from "../search/index.ts";
 import { autoDj } from "../stream/autoDj.ts";
 import { jukeboxDb } from "../db.ts";
 import { resolveTrackMetadata } from "../metadata/index.ts";
+import { memoryBufferManager } from "../stream/memoryBuffer.ts";
 
 export type StateListener = (state: ServerState) => void;
 export type ToastListener = (message: string, type: "info" | "success" | "warning" | "error") => void;
@@ -461,6 +462,7 @@ export class QueueStore {
       this.persistNowPlaying();
       this.enrichTrackMetadata(next);
       this.notify();
+      this.manageMemoryBuffers();
       return;
     }
 
@@ -495,6 +497,7 @@ export class QueueStore {
         this.toast(`Auto-DJ selected "${rec.title}" by ${rec.artist}`, "info");
         this.enrichTrackMetadata(autoTrack);
         this.notify();
+        this.manageMemoryBuffers();
         return;
       }
     }
@@ -506,6 +509,30 @@ export class QueueStore {
     this.duration = 0;
     this.persistNowPlaying();
     this.notify();
+    this.manageMemoryBuffers();
+  }
+
+  /**
+   * Manages ephemeral memory buffers: retains active & next queued track, pre-buffers upcoming in RAM.
+   */
+  private manageMemoryBuffers() {
+    const activeIds: string[] = [];
+    if (this.nowPlaying) activeIds.push(this.nowPlaying.id);
+    if (this.queue.length > 0) activeIds.push(this.queue[0].id);
+    memoryBufferManager.retainOnly(activeIds);
+
+    if (this.queue.length > 0) {
+      const nextUp = this.queue[0];
+      void (async () => {
+        try {
+          const { resolveStreamUrl } = await import("../stream/resolver.ts");
+          const streamUrl = await resolveStreamUrl(nextUp.id, nextUp.provider, nextUp.permalink);
+          if (streamUrl) {
+            await memoryBufferManager.getOrStartBuffer(nextUp.id, nextUp.provider, streamUrl);
+          }
+        } catch {}
+      })();
+    }
   }
 
   /**

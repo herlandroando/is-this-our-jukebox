@@ -499,3 +499,122 @@ body {
   border-color: #0b0b12 transparent transparent transparent;
 }
 
+/* Comic Manga Speedlines Patterns */
+.p5-speedlines {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.04) 2px,
+    transparent 2px,
+    transparent 8px
+  );
+}
+
+.p5-speedlines-red {
+  background: repeating-linear-gradient(
+    -55deg,
+    rgba(230, 0, 18, 0.25),
+    rgba(230, 0, 18, 0.25) 3px,
+    transparent 3px,
+    transparent 12px
+  );
+}
+
+.p5-burst-bg {
+  background: radial-gradient(circle at center, rgba(230, 0, 18, 0.45) 0%, rgba(11, 11, 20, 0.98) 75%);
+}
+
+/* Comic Shutter / Stealth Barrier Bar */
+.p5-hazard-stripes {
+  background: repeating-linear-gradient(
+    -45deg,
+    #ffe600,
+    #ffe600 12px,
+    #000000 12px,
+    #000000 24px
+  );
+}
+
+/* Newspaper cutout typography collage */
+.p5-cutout-black {
+  background-color: #000000;
+  color: #ffffff;
+  padding: 0 4px;
+  display: inline-block;
+  transform: rotate(-2deg);
+  border: 1px solid #ffffff;
+}
+
+.p5-cutout-red {
+  background-color: #e60012;
+  color: #ffffff;
+  padding: 0 4px;
+  display: inline-block;
+  transform: rotate(2.5deg);
+  border: 1px solid #ffffff;
+}
+
+.p5-cutout-white {
+  background-color: #ffffff;
+  color: #000000;
+  padding: 0 4px;
+  display: inline-block;
+  transform: rotate(-1.5deg);
+  border: 1px solid #000000;
+}
+
+/* P5 Slash / Blade Impact Animation */
+@keyframes p5Slash {
+  0% {
+    transform: scaleX(0.1) skewX(-20deg);
+    opacity: 0;
+  }
+  40% {
+    transform: scaleX(1.15) skewX(-14deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1) skewX(-12deg);
+    opacity: 1;
+  }
+}
+
+.animate-p5-slash {
+  animation: p5Slash 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+
+/* P5 Stamp Land Animation */
+@keyframes p5Stamp {
+  0% {
+    transform: scale(2.2) rotate(-15deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.92) rotate(-4deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(-3deg);
+    opacity: 1;
+  }
+}
+
+.animate-p5-stamp {
+  animation: p5Stamp 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* P5 Pulse Shadow */
+@keyframes p5RedPulse {
+  0%, 100% {
+    box-shadow: 4px 4px 0px #000000, 0 0 15px rgba(230, 0, 18, 0.5);
+  }
+  50% {
+    box-shadow: 6px 6px 0px #000000, 0 0 35px rgba(230, 0, 18, 0.9);
+  }
+}
+
+.animate-p5-glow {
+  animation: p5RedPulse 1.8s infinite ease-in-out;
+}
+
+

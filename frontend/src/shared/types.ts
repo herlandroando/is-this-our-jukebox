@@ -1,4 +1,5 @@
 export type AudioProvider = "yt" | "sc";
+export type SearchFilterProvider = "yt_music" | "yt_normal" | "sc";
 
 export type MemberRole = "host" | "dj" | "vip" | "member" | "listener";
 

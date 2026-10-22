@@ -1,11 +1,16 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
+
+// Increase default EventEmitter max listeners limit for pooled TLS/HTTP keep-alive sockets during audio chunk streaming
+EventEmitter.defaultMaxListeners = 100;
 import { getAdminToken, verifyAdminToken } from "./adminToken.ts";
 import { getLanIPv4 } from "./lan.ts";
 import { openBrowser } from "./openBrowser.ts";
 import { searchTracks, getRelatedTracks } from "./search/index.ts";
 import { resolveStreamUrl, invalidateStreamCache, clearAllStreamCache } from "./stream/resolver.ts";
+import { memoryBufferManager } from "./stream/memoryBuffer.ts";
 import { getStaticMap } from "./static.ts";
 import { wsHub, type WsUserData } from "./ws/server.ts";
 import { queueStore } from "./queue/store.ts";
@@ -14,7 +19,7 @@ import { jukeboxDb } from "./db.ts";
 import { generateBeatmap } from "./rhythm/beatDetector.ts";
 import { triviaGameManager } from "./trivia/gameManager.ts";
 import { previewPlaylist } from "./trivia/playlistService.ts";
-import type { AudioProvider } from "./types.ts";
+import type { AudioProvider, SearchFilterProvider } from "./types.ts";
 import type { RhythmScoreSubmission } from "./rhythm/types.ts";
 import {
   getYouTubeCookieStatus,
@@ -187,7 +192,7 @@ app.get("/api/tracks/related", async (c) => {
 
 app.get("/api/search", async (c) => {
   const q = c.req.query("q") || "";
-  const provider = c.req.query("p") as AudioProvider | undefined;
+  const provider = (c.req.query("p") || "yt_music") as SearchFilterProvider;
   if (!q.trim() || c.req.raw.signal.aborted) {
     return c.json([]);
   }
@@ -367,87 +372,71 @@ app.get("/api/stream/:id", async (c) => {
     return c.text("Audio stream could not be resolved", 404);
   }
 
-  // Forward Range header if requested by HTML5 player
-  const rangeHeader = c.req.header("range");
-  const fetchHeaders: HeadersInit = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  };
-  if (rangeHeader) {
-    fetchHeaders["Range"] = rangeHeader;
-  }
-
   try {
-    let finalRes = await fetch(streamUrl, {
-      headers: fetchHeaders,
-      signal: c.req.raw.signal,
-    });
+    // Ingest into ephemeral in-memory buffer (pure RAM, ToS compliant, zero files on disk)
+    const memBuf = await memoryBufferManager.getOrStartBuffer(id, provider, streamUrl);
 
-    if (finalRes.status >= 400 && finalRes.status < 500) {
-      invalidateStreamCache(id);
-      // Attempt fresh re-resolution once to recover from expired tokens/IP changes
-      const freshUrl = await resolveStreamUrl(id, provider, permalink, c.req.raw.signal, true);
-      if (freshUrl && freshUrl !== streamUrl && !c.req.raw.signal.aborted) {
-        try {
-          const retryRes = await fetch(freshUrl, {
-            headers: fetchHeaders,
-            signal: c.req.raw.signal,
-          });
-          if (retryRes.status < 400) {
-            finalRes = retryRes;
-          }
-        } catch {
-          // keep original response
-        }
+    const rawRange = c.req.header("range");
+    let start = 0;
+    let end: number | undefined;
+
+    if (rawRange && rawRange.startsWith("bytes=")) {
+      const parts = rawRange.replace("bytes=", "").split("-");
+      start = parseInt(parts[0], 10) || 0;
+      if (parts[1] && parts[1].trim()) {
+        end = parseInt(parts[1], 10);
       }
     }
 
-    if (finalRes.status >= 400) {
+    const DEFAULT_CHUNK = 1024 * 1024; // 1 MB chunk slice
+    if (end === undefined || end - start + 1 > DEFAULT_CHUNK) {
+      end = start + DEFAULT_CHUNK - 1;
+    }
+
+    // Wait until initial bytes are buffered in RAM
+    const targetWait = Math.min(end + 1, start + 65536);
+    await memBuf.waitForBytes(targetWait);
+
+    if (memBuf.downloadedBytes === 0 && memBuf.error) {
       invalidateStreamCache(id);
-      return c.text(`Audio stream error (${finalRes.status})`, finalRes.status as any);
+      return c.text("Audio stream buffer error", 502);
+    }
+
+    const actualEnd = memBuf.totalSize ? Math.min(end, memBuf.totalSize - 1) : end;
+    const slice = memBuf.readSlice(start, actualEnd);
+
+    if (slice.byteLength === 0 && start >= (memBuf.totalSize || 0)) {
+      return new Response(null, { status: 416 });
     }
 
     const responseHeaders = new Headers();
-    responseHeaders.set("Content-Type", finalRes.headers.get("content-type") || "audio/mp4");
+    responseHeaders.set("Content-Type", memBuf.contentType || "audio/mp4");
     responseHeaders.set("Accept-Ranges", "bytes");
 
-    const contentRange = finalRes.headers.get("content-range");
-    if (contentRange) responseHeaders.set("Content-Range", contentRange);
+    const total = memBuf.totalSize ? String(memBuf.totalSize) : "*";
+    const sliceEnd = start + slice.byteLength - 1;
+    responseHeaders.set("Content-Range", `bytes ${start}-${sliceEnd}/${total}`);
+    responseHeaders.set("Content-Length", String(slice.byteLength));
 
-    const contentLength = finalRes.headers.get("content-length");
-    if (contentLength) responseHeaders.set("Content-Length", contentLength);
-
-    // CRITICAL FIX for Bun HTTP 206 Partial Content:
-    // When Bun streams a ReadableStream with status 206, it strips Content-Length and forces
-    // Transfer-Encoding: chunked. RFC 7230/9110 strictly forbids chunked encoding on 206 responses,
-    // which causes HTML5 <audio> / Chromium / WebKit to throw "MEDIA_ELEMENT_ERROR: Format error".
-    // Reading the slice into an ArrayBuffer preserves the exact Content-Length without chunking.
-    if (finalRes.status === 206 || rangeHeader) {
-      const buf = await finalRes.arrayBuffer();
-      responseHeaders.set("Content-Length", String(buf.byteLength));
-      return new Response(buf, {
-        status: finalRes.status,
-        headers: responseHeaders,
-      });
-    }
-
-    return new Response(finalRes.body, {
-      status: finalRes.status,
+    return new Response(slice as unknown as BodyInit, {
+      status: 206,
       headers: responseHeaders,
     });
   } catch (err: any) {
     if (err?.name === "AbortError" || c.req.raw.signal.aborted) {
       return new Response(null, { status: 499 });
     }
-    console.error(`[stream] Error proxying audio stream for ${id}:`, err);
+    console.error(`[stream] Error serving memory stream for ${id}:`, err);
     return c.text("Stream proxy error", 502);
   }
 });
 
-// Static assets serving
+// Static assets serving with gzip support
 app.get("*", async (c) => {
   const staticMap = await getStaticMap();
   const urlPath = new URL(c.req.url).pathname;
+  const acceptEncoding = c.req.header("accept-encoding") || "";
+  const supportsGzip = acceptEncoding.includes("gzip");
 
   const exactAsset = staticMap.assets.get(urlPath);
   if (exactAsset) {
@@ -457,6 +446,13 @@ app.get("*", async (c) => {
     } else if (urlPath === "/" || urlPath === "/index.html" || exactAsset.contentType.includes("text/html")) {
       headers["Cache-Control"] = "no-cache";
     }
+
+    if (supportsGzip && exactAsset.gzippedBody) {
+      headers["Content-Encoding"] = "gzip";
+      headers["Vary"] = "Accept-Encoding";
+      return new Response(exactAsset.gzippedBody as unknown as BodyInit, { headers });
+    }
+
     return new Response(exactAsset.body as unknown as BodyInit, {
       headers,
     });
@@ -464,11 +460,17 @@ app.get("*", async (c) => {
 
   // SPA fallback to index.html
   if (staticMap.indexHtml) {
+    const headers: Record<string, string> = {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-cache",
+    };
+    if (supportsGzip && staticMap.indexHtmlGzip) {
+      headers["Content-Encoding"] = "gzip";
+      headers["Vary"] = "Accept-Encoding";
+      return new Response(staticMap.indexHtmlGzip as unknown as BodyInit, { headers });
+    }
     return new Response(staticMap.indexHtml as unknown as BodyInit, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-cache",
-      },
+      headers,
     });
   }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { jukeboxClient } from "../../shared/ws.ts";
+import { personaAudio } from "../../shared/personaAudio.ts";
 import UiIcon from "../UiIcon.vue";
 
 const triviaState = computed(() => jukeboxClient.triviaState.value);
@@ -20,6 +21,17 @@ const shouldShowBanner = computed(() => {
     !isInLobby.value
   );
 });
+
+// Suara saat Calling Card muncul di layar
+watch(
+  shouldShowBanner,
+  (visible) => {
+    if (visible) {
+      personaAudio.playReady();
+    }
+  },
+  { immediate: true }
+);
 
 const hostNickname = computed(() => {
   return triviaState.value?.hostNickname || jukeboxClient.triviaInvitationData.value?.hostNickname || "Host";
@@ -44,11 +56,13 @@ const emit = defineEmits<{
 }>();
 
 function join() {
+  personaAudio.playSelect();
   jukeboxClient.joinTriviaLobby();
   emit("join");
 }
 
 function dismiss() {
+  personaAudio.playCursor();
   jukeboxClient.isTriviaLobbyInvitationOpen.value = false;
 }
 </script>
@@ -56,48 +70,83 @@ function dismiss() {
 <template>
   <Transition
     enter-active-class="transform ease-out duration-300 transition"
-    enter-from-class="-translate-y-6 opacity-0"
-    enter-to-class="translate-y-0 opacity-100"
+    enter-from-class="-translate-y-12 scale-95 opacity-0"
+    enter-to-class="translate-y-0 scale-100 opacity-100"
     leave-active-class="transition ease-in duration-200"
-    leave-from-class="opacity-100"
-    leave-to-class="-translate-y-4 opacity-0"
+    leave-from-class="opacity-100 scale-100"
+    leave-to-class="-translate-y-8 scale-95 opacity-0"
   >
     <div
       v-if="shouldShowBanner"
-      class="fixed top-4 left-1/2 -translate-x-1/2 z-40 w-[94%] max-w-md p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-obsidian-900/95 via-indigo-950/90 to-fuchsia-950/95 border border-indigo-400/40 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-3 text-slate-100"
+      class="fixed top-3 sm:top-5 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-lg select-none"
     >
-      <div class="flex items-center gap-3 min-w-0">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-pink-500 flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(99,102,241,0.4)] animate-bounce">
-          <span class="text-xl">🎮</span>
+      <!-- Persona 5 Calling Card Envelope / Card Shape -->
+      <div
+        class="relative bg-[#e60012] border-3 border-white p-3 sm:p-4 shadow-[6px_6px_0px_#000000] p5-speedlines flex items-center justify-between gap-2.5 sm:gap-3 overflow-hidden"
+        style="transform: skewX(-10deg) rotate(-0.5deg);"
+      >
+        <!-- Halftone overlay pattern -->
+        <div class="absolute inset-0 opacity-15 p5-halftone-dots pointer-events-none"></div>
+
+        <!-- Top-Left Calling Card Stamp -->
+        <div
+          class="absolute -top-2.5 -left-2 bg-black text-white px-2.5 py-0.5 border border-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest shadow-[2px_2px_0px_#000]"
+          style="transform: skewX(-12deg) rotate(-2deg);"
+        >
+          ★ TAKE YOUR HEART ★
         </div>
-        <div class="flex flex-col min-w-0">
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-black uppercase tracking-wider text-pink-400 bg-pink-500/10 px-1.5 py-0.5 rounded border border-pink-500/20">Lobby Dibuka</span>
-            <span class="text-xs font-bold text-white truncate">{{ hostNickname }}</span>
+
+        <!-- Left Visual: Mask / Fire Icon + Mission Briefing -->
+        <div
+          class="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 relative z-10"
+          style="transform: skewX(10deg);"
+        >
+          <div
+            class="w-10 h-10 sm:w-11 sm:h-11 bg-black border-2 border-white flex items-center justify-center shrink-0 shadow-[3px_3px_0px_#000] text-xl"
+            style="transform: rotate(-3deg);"
+          >
+            🎭
           </div>
-          <p class="text-[11px] text-slate-300 truncate">
-            Game Tebak Lagu: <strong>{{ categoryName }}</strong>
-          </p>
+
+          <div class="flex flex-col min-w-0 leading-tight">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="p5-cutout-black text-[10px] sm:text-[11px] font-black uppercase tracking-wider">
+                CALLING CARD
+              </span>
+              <span class="text-white text-[11px] sm:text-xs font-black truncate drop-shadow-md">
+                from {{ hostNickname }}
+              </span>
+            </div>
+            <div class="mt-1 flex items-baseline gap-1 text-white text-xs sm:text-sm font-black truncate">
+              <span class="text-black bg-white px-1 font-mono text-[10px] uppercase">TARGET</span>
+              <span class="truncate uppercase tracking-wide">{{ categoryName }}</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-fuchsia-600 hover:from-indigo-600 hover:to-fuchsia-700 text-white font-black text-xs shadow-md shadow-indigo-500/30 active:scale-95 transition cursor-pointer"
-          @click="join"
+        <!-- Right Visual: Infiltrate CTA & Dismiss -->
+        <div
+          class="flex items-center gap-2 shrink-0 relative z-10"
+          style="transform: skewX(10deg);"
         >
-          Ikutan! 🚀
-        </button>
+          <button
+            type="button"
+            class="px-3 sm:px-4 py-2 bg-black hover:bg-white text-white hover:text-black border-2 border-white font-black text-xs sm:text-sm uppercase tracking-wider transition-all duration-150 cursor-pointer shadow-[3px_3px_0px_#000] active:scale-95 animate-pulse"
+            style="transform: skewX(-6deg);"
+            @click="join"
+          >
+            INFILTRATE! ⚔️
+          </button>
 
-        <button
-          type="button"
-          class="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition cursor-pointer"
-          title="Tutup banner"
-          @click="dismiss"
-        >
-          <UiIcon name="x" :size="14" />
-        </button>
+          <button
+            type="button"
+            class="w-7 h-7 sm:w-8 sm:h-8 bg-black/80 hover:bg-black text-white border border-white flex items-center justify-center transition-all cursor-pointer shadow-[2px_2px_0px_#000] active:scale-90"
+            title="Abaikan misi"
+            @click="dismiss"
+          >
+            <UiIcon name="x" :size="14" />
+          </button>
+        </div>
       </div>
     </div>
   </Transition>

@@ -761,34 +761,28 @@ class JukeboxDatabase {
 
   public getAllTriviaPresets(onlyEnabled = true): TriviaPresetItem[] {
     try {
+      const selectCols = `id, name, description, icon, type, playlist_id, is_builtin, is_enabled, sort_order, 
+        CASE WHEN cached_songs_json IS NOT NULL AND cached_songs_json != '' THEN COALESCE(json_array_length(cached_songs_json), 0) ELSE 0 END AS song_count, 
+        last_synced_at, updated_at`;
       const query = onlyEnabled
-        ? "SELECT * FROM trivia_presets WHERE is_enabled = 1 ORDER BY sort_order ASC, name ASC"
-        : "SELECT * FROM trivia_presets ORDER BY sort_order ASC, name ASC";
+        ? `SELECT ${selectCols} FROM trivia_presets WHERE is_enabled = 1 ORDER BY sort_order ASC, name ASC`
+        : `SELECT ${selectCols} FROM trivia_presets ORDER BY sort_order ASC, name ASC`;
       const rows = this.db.prepare(query).all() as any[];
 
-      return rows.map((r) => {
-        let songCount = 0;
-        if (r.cached_songs_json) {
-          try {
-            const parsed = JSON.parse(r.cached_songs_json);
-            if (Array.isArray(parsed)) songCount = parsed.length;
-          } catch {}
-        }
-        return {
-          id: r.id,
-          name: r.name,
-          description: r.description || "",
-          icon: r.icon || "music",
-          type: r.type,
-          playlistId: r.playlist_id || undefined,
-          isBuiltin: Boolean(r.is_builtin),
-          isEnabled: Boolean(r.is_enabled),
-          sortOrder: r.sort_order || 0,
-          songCount,
-          lastSyncedAt: r.last_synced_at || 0,
-          updatedAt: r.updated_at || 0,
-        };
-      });
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description || "",
+        icon: r.icon || "music",
+        type: r.type,
+        playlistId: r.playlist_id || undefined,
+        isBuiltin: Boolean(r.is_builtin),
+        isEnabled: Boolean(r.is_enabled),
+        sortOrder: r.sort_order || 0,
+        songCount: r.song_count || 0,
+        lastSyncedAt: r.last_synced_at || 0,
+        updatedAt: r.updated_at || 0,
+      }));
     } catch (err) {
       console.warn("[db] getAllTriviaPresets error:", err);
       return [];
@@ -797,15 +791,11 @@ class JukeboxDatabase {
 
   public getTriviaPreset(id: string): TriviaPresetItem | null {
     try {
-      const row = this.db.prepare("SELECT * FROM trivia_presets WHERE id = ?").get(id) as any;
+      const selectCols = `id, name, description, icon, type, playlist_id, is_builtin, is_enabled, sort_order, 
+        CASE WHEN cached_songs_json IS NOT NULL AND cached_songs_json != '' THEN COALESCE(json_array_length(cached_songs_json), 0) ELSE 0 END AS song_count, 
+        last_synced_at, updated_at`;
+      const row = this.db.prepare(`SELECT ${selectCols} FROM trivia_presets WHERE id = ?`).get(id) as any;
       if (!row) return null;
-      let songCount = 0;
-      if (row.cached_songs_json) {
-        try {
-          const parsed = JSON.parse(row.cached_songs_json);
-          if (Array.isArray(parsed)) songCount = parsed.length;
-        } catch {}
-      }
       return {
         id: row.id,
         name: row.name,
@@ -816,7 +806,7 @@ class JukeboxDatabase {
         isBuiltin: Boolean(row.is_builtin),
         isEnabled: Boolean(row.is_enabled),
         sortOrder: row.sort_order || 0,
-        songCount,
+        songCount: row.song_count || 0,
         lastSyncedAt: row.last_synced_at || 0,
         updatedAt: row.updated_at || 0,
       };

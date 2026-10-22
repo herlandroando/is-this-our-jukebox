@@ -4,12 +4,14 @@ import { EMBEDDED_ASSETS, type EmbeddedAssetMeta } from "./embedded.ts";
 
 export interface StaticAsset {
   body: Uint8Array;
+  gzippedBody?: Uint8Array;
   contentType: string;
 }
 
 export interface StaticMap {
   assets: Map<string, StaticAsset>;
   indexHtml: Uint8Array | null;
+  indexHtmlGzip: Uint8Array | null;
   size: number;
 }
 
@@ -20,17 +22,31 @@ const load = async (path: unknown): Promise<Uint8Array> => {
   return new Uint8Array(await file.arrayBuffer());
 };
 
+function canGzip(contentType: string): boolean {
+  return (
+    contentType.includes("javascript") ||
+    contentType.includes("css") ||
+    contentType.includes("text") ||
+    contentType.includes("svg") ||
+    contentType.includes("json") ||
+    contentType.includes("xml")
+  );
+}
+
 export async function buildStaticMap(): Promise<StaticMap> {
   const assets = new Map<string, StaticAsset>();
   let indexHtml: Uint8Array | null = null;
+  let indexHtmlGzip: Uint8Array | null = null;
 
   if (EMBEDDED_ASSETS.length > 0) {
     for (const meta of EMBEDDED_ASSETS) {
       try {
         const body = await load(meta.path);
-        assets.set(meta.webPath, { body, contentType: meta.contentType });
+        const gzippedBody = canGzip(meta.contentType) ? Bun.gzipSync(body as any) : undefined;
+        assets.set(meta.webPath, { body, gzippedBody, contentType: meta.contentType });
         if (meta.webPath === "/" || meta.webPath.endsWith("/index.html")) {
           indexHtml = body;
+          indexHtmlGzip = gzippedBody || Bun.gzipSync(body as any);
         }
       } catch (e) {
         console.warn(`[static] Could not load embedded asset ${meta.webPath}:`, e);
@@ -47,14 +63,19 @@ export async function buildStaticMap(): Promise<StaticMap> {
       try {
         const indexFile = Bun.file(indexPath);
         indexHtml = new Uint8Array(await indexFile.arrayBuffer());
-        assets.set("/", { body: indexHtml, contentType: "text/html; charset=utf-8" });
+        indexHtmlGzip = Bun.gzipSync(indexHtml as any);
+        assets.set("/", {
+          body: indexHtml,
+          gzippedBody: indexHtmlGzip,
+          contentType: "text/html; charset=utf-8",
+        });
       } catch {
         // ignore
       }
     }
   }
 
-  return { assets, indexHtml, size: assets.size };
+  return { assets, indexHtml, indexHtmlGzip, size: assets.size };
 }
 
 export async function getStaticMap(): Promise<StaticMap> {

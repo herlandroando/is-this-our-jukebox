@@ -1,6 +1,6 @@
 import YTMusic from "ytmusic-api";
 import Soundcloud from "soundcloud.ts";
-import type { AudioProvider, SearchResult } from "../types.ts";
+import type { AudioProvider, SearchFilterProvider, SearchResult } from "../types.ts";
 
 let ytMusicClient: YTMusic | null = null;
 let ytMusicInit: Promise<YTMusic> | null = null;
@@ -56,7 +56,7 @@ function pickThumb(thumbs?: any): string {
   return "";
 }
 
-export async function searchYT(query: string): Promise<SearchResult[]> {
+export async function searchYTMusic(query: string): Promise<SearchResult[]> {
   try {
     const yt = await getYTMusic();
     const results: SearchResult[] = [];
@@ -164,10 +164,119 @@ export async function searchYT(query: string): Promise<SearchResult[]> {
 
     return results;
   } catch (err) {
-    console.warn("[search] YouTube search error:", err);
+    console.warn("[search] YouTube Music search error:", err);
     return [];
   }
 }
+
+export async function searchYTNormal(query: string): Promise<SearchResult[]> {
+  try {
+    const yt = await getYTMusic();
+    const results: SearchResult[] = [];
+    const seenIds = new Set<string>();
+
+    // 1. Primary: searchVideos returns video content (music videos, clips, stage performances, covers)
+    try {
+      const videos = await yt.searchVideos(query);
+      if (Array.isArray(videos) && videos.length > 0) {
+        for (const item of videos) {
+          if (!item || !item.videoId || seenIds.has(item.videoId)) continue;
+          seenIds.add(item.videoId);
+
+          const artistName = (typeof item.artist === "object" ? item.artist?.name : item.artist) || "";
+          const thumb =
+            pickThumb(item.thumbnails) ||
+            `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+
+          results.push({
+            id: item.videoId,
+            provider: "yt",
+            title: item.name || "(untitled)",
+            artist: artistName.trim() || "Unknown Artist",
+            thumbnail: thumb,
+            duration: typeof item.duration === "number" ? item.duration : 0,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("[search] yt.searchVideos error:", err);
+    }
+
+    // 2. Fallback if searchVideos returned few results
+    if (results.length < 10) {
+      try {
+        const raw = await yt.search(query);
+        for (const item of raw) {
+          if (!item || typeof item !== "object") continue;
+          const anyItem = item as any;
+          if (anyItem.type !== "VIDEO") continue;
+          if (!anyItem.videoId || seenIds.has(anyItem.videoId)) continue;
+          seenIds.add(anyItem.videoId);
+
+          let rawArtist = "";
+          if (typeof anyItem.artists === "string") {
+            rawArtist = anyItem.artists;
+          } else if (Array.isArray(anyItem.artists)) {
+            rawArtist = anyItem.artists.map((a: any) => (typeof a === "string" ? a : a.name)).filter(Boolean).join(", ");
+          } else if (anyItem.artists && typeof anyItem.artists === "object") {
+            rawArtist = anyItem.artists.name || "";
+          } else if (anyItem.artist) {
+            rawArtist = typeof anyItem.artist === "string" ? anyItem.artist : anyItem.artist.name || "";
+          }
+
+          let artistName = rawArtist.trim();
+          const trackTitle = anyItem.name || anyItem.title || "(untitled)";
+          if (!artistName && trackTitle.includes(" - ")) {
+            const parts = trackTitle.split(" - ");
+            if (parts.length >= 2 && parts[0].trim().length > 1) {
+              artistName = parts[0].trim();
+            }
+          }
+
+          if (!artistName) {
+            artistName = "Unknown Artist";
+          }
+
+          let duration = 0;
+          if (typeof anyItem.duration === "number") {
+            duration = anyItem.duration;
+          } else if (typeof anyItem.duration === "string") {
+            const parts = anyItem.duration.trim().split(":").map(Number);
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              duration = parts[0] * 60 + parts[1];
+            } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+              duration = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            }
+          }
+
+          let thumb =
+            pickThumb(anyItem.thumbnail) ||
+            pickThumb(anyItem.thumbnails) ||
+            `https://i.ytimg.com/vi/${anyItem.videoId}/hqdefault.jpg`;
+
+          results.push({
+            id: anyItem.videoId,
+            provider: "yt",
+            title: trackTitle,
+            artist: artistName,
+            thumbnail: thumb,
+            duration,
+          });
+        }
+      } catch (err) {
+        console.warn("[search] yt.search fallback for YT Normal error:", err);
+      }
+    }
+
+    return results;
+  } catch (err) {
+    console.warn("[search] YouTube Normal search error:", err);
+    return [];
+  }
+}
+
+// Keep searchYT as alias to searchYTMusic for backward compatibility
+export const searchYT = searchYTMusic;
 
 export async function searchSC(query: string): Promise<SearchResult[]> {
   try {
@@ -199,7 +308,11 @@ export async function searchSC(query: string): Promise<SearchResult[]> {
   }
 }
 
-export async function searchTracks(query: string, provider?: AudioProvider, signal?: AbortSignal): Promise<SearchResult[]> {
+export async function searchTracks(
+  query: string,
+  provider?: SearchFilterProvider | AudioProvider | string,
+  signal?: AbortSignal
+): Promise<SearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed || signal?.aborted) return [];
 
@@ -207,28 +320,14 @@ export async function searchTracks(query: string, provider?: AudioProvider, sign
     const res = await searchSC(trimmed);
     return signal?.aborted ? [] : res;
   }
-  if (provider === "yt") {
-    const res = await searchYT(trimmed);
+  if (provider === "yt_normal") {
+    const res = await searchYTNormal(trimmed);
     return signal?.aborted ? [] : res;
   }
 
-  // Combined search: fetch both concurrently
-  const [ytResults, scResults] = await Promise.all([
-    searchYT(trimmed),
-    searchSC(trimmed),
-  ]);
-
-  if (signal?.aborted) return [];
-
-  // Interleave results or return YouTube prioritized with SoundCloud
-  const combined: SearchResult[] = [];
-  const maxLen = Math.max(ytResults.length, scResults.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < ytResults.length) combined.push(ytResults[i]);
-    if (i < scResults.length) combined.push(scResults[i]);
-  }
-
-  return combined;
+  // Default to YouTube Music ("yt_music", "yt", or unspecified)
+  const res = await searchYTMusic(trimmed);
+  return signal?.aborted ? [] : res;
 }
 
 /**
@@ -239,15 +338,15 @@ export async function searchFallback(query: string, failedProvider?: AudioProvid
     // Try SoundCloud first
     const sc = await searchSC(query);
     if (sc.length > 0) return sc[0];
+    const ytm = await searchYTMusic(query);
+    return ytm.length > 0 ? ytm[0] : null;
   } else {
-    // Try YouTube first
-    const yt = await searchYT(query);
-    if (yt.length > 0) return yt[0];
+    // Try YouTube Music first
+    const ytm = await searchYTMusic(query);
+    if (ytm.length > 0) return ytm[0];
+    const sc = await searchSC(query);
+    return sc.length > 0 ? sc[0] : null;
   }
-
-  // Fallback to whichever is available
-  const all = await searchTracks(query);
-  return all.length > 0 ? all[0] : null;
 }
 
 interface CachedRelated {

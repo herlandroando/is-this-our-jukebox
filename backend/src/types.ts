@@ -1,4 +1,5 @@
 export type AudioProvider = "yt" | "sc";
+export type SearchFilterProvider = "yt_music" | "yt_normal" | "sc";
 
 export type MemberRole = "host" | "dj" | "vip" | "member" | "listener";
 
@@ -199,6 +200,8 @@ export type ServerMessage =
       startTime: number;
       endTime: number;
       durationSec: number;
+      listenDurationSec?: number;
+      listenStartTime?: number;
     }
   | { type: "trivia:roundEnd"; result: import("./trivia/types.ts").TriviaRoundResult }
   | { type: "trivia:gameOver"; podium: import("./trivia/types.ts").TriviaPodiumEntry[] }

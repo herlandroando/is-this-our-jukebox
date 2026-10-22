@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import type { AudioProvider, QueueTrack, SearchResult, TopTrackResult } from "../shared/types.ts";
+import type { AudioProvider, QueueTrack, SearchFilterProvider, SearchResult, TopTrackResult } from "../shared/types.ts";
 import { searchTracks, getRelatedTracks, getTopTracks, getRecentTracks } from "../shared/api.ts";
 import { jukeboxClient } from "../shared/ws.ts";
 import { useFavorites } from "../shared/useFavorites.ts";
@@ -19,7 +19,7 @@ const emit = defineEmits<{
 const { favorites, isFavorite, toggleFavorite, recordUserRecent } = useFavorites();
 
 const query = ref(props.initialQuery || "");
-const activeProvider = ref<AudioProvider | "all">("all");
+const activeProvider = ref<SearchFilterProvider>("yt_music");
 const isSearching = ref(false);
 const searchResults = ref<SearchResult[]>([]);
 const searchInputRef = ref<HTMLInputElement | null>(null);
@@ -65,7 +65,7 @@ function performSearch() {
   isSearching.value = true;
   searchAbortController = new AbortController();
 
-  const provider = activeProvider.value === "all" ? undefined : activeProvider.value;
+  const provider = activeProvider.value;
 
   void (async () => {
     try {
@@ -253,24 +253,24 @@ function handleImageError(e: Event, track: SearchResult) {
         <div class="flex items-center gap-1.5">
           <button
             class="glass-pill px-3 py-1 text-xs font-semibold transition-all active:scale-95"
-            :class="activeProvider === 'all' ? 'bg-indigo-500/25 border-indigo-400/50 text-indigo-200 shadow-[0_0_12px_rgba(99,102,241,0.3)]' : 'text-slate-400 hover:text-white'"
-            @click="activeProvider = 'all'"
+            :class="activeProvider === 'yt_music' ? 'bg-red-500/25 border-red-400/50 text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.3)]' : 'text-slate-400 hover:text-white'"
+            @click="activeProvider = 'yt_music'"
           >
-            All Providers
+            YT Music
           </button>
           <button
             class="glass-pill px-3 py-1 text-xs font-semibold transition-all active:scale-95"
-            :class="activeProvider === 'yt' ? 'bg-red-500/20 border-red-400/50 text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.25)]' : 'text-slate-400 hover:text-white'"
-            @click="activeProvider = 'yt'"
+            :class="activeProvider === 'yt_normal' ? 'bg-rose-500/20 border-rose-400/50 text-rose-200 shadow-[0_0_12px_rgba(244,63,94,0.25)]' : 'text-slate-400 hover:text-white'"
+            @click="activeProvider = 'yt_normal'"
           >
-            YouTube
+            YT Normal
           </button>
           <button
             class="glass-pill px-3 py-1 text-xs font-semibold transition-all active:scale-95"
             :class="activeProvider === 'sc' ? 'bg-orange-500/20 border-orange-400/50 text-orange-200 shadow-[0_0_12px_rgba(249,115,22,0.25)]' : 'text-slate-400 hover:text-white'"
             @click="activeProvider = 'sc'"
           >
-            SoundCloud
+            Soundcloud
           </button>
         </div>
 

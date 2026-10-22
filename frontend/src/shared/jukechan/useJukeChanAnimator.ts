@@ -1,4 +1,4 @@
-import { ref, onMounted, onBeforeUnmount, watch } from "vue";
+import { shallowRef, triggerRef, onMounted, onBeforeUnmount, watch } from "vue";
 import {
   createDefaultParams,
   EMOTION_PRESETS,
@@ -41,8 +41,10 @@ export function useJukeChanAnimator(
     isKaraokeActive,
   } = useJukeChanMood();
 
-  // Discrete reactive outputs used by template v-if / morphs
-  const params = ref<RigParams>(createDefaultParams());
+  // Discrete reactive outputs used by template v-if / morphs (shallowRef to prevent 60fps deep reactivity diffing)
+  const params = shallowRef<RigParams>(createDefaultParams());
+  let lastDiscreteKey = "";
+  let lastTriggerMs = 0;
 
   // Pointer target normalized (-1..1)
   let pointerX = 0;
@@ -372,6 +374,18 @@ export function useJukeChanAnimator(
         "transform",
         `translate(${gx}, ${gy}) translate(241, 205) scale(${ps}) translate(-241, -205)`
       );
+    }
+
+    // Discrete/throttled reactivity trigger for template morphs (v-if, mouth, arm pose)
+    // Avoids 60fps Vue Virtual DOM diffing of 1000+ SVG nodes while preserving full 60fps transform smoothness
+    const discreteKey = `${armPose}|${p.eyeSpecial}|${p.mouthShape}|${p.cheekPuff > 0.4}|${p.eyeSmile > 0.5}|${p.blush}|${currentMoodKey.value}`;
+    const needsFastSync = p.mouthOpen > 0.1 || finalEyeOpen < 0.95;
+    const nowThrottleMs = needsFastSync ? 40 : 100;
+
+    if (discreteKey !== lastDiscreteKey || nowMs - lastTriggerMs >= nowThrottleMs) {
+      lastDiscreteKey = discreteKey;
+      lastTriggerMs = nowMs;
+      triggerRef(params);
     }
 
     rafId = requestAnimationFrame(tick);

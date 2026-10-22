@@ -42,7 +42,8 @@ export function cleanTrackTitle(title: string): string {
 export async function fetchPlaylistSongs(
   playlistIdOrUrl: string,
   forceRefresh = false,
-  presetId?: string
+  presetId?: string,
+  maxTracks = 50
 ): Promise<SearchResult[]> {
   const cleanId = parsePlaylistId(playlistIdOrUrl);
   if (!cleanId) {
@@ -50,7 +51,7 @@ export async function fetchPlaylistSongs(
     return [];
   }
 
-  // 1. Check SQLite cache if presetId is provided
+  // 1. Check SQLite cache if presetId or cleanId is available
   const targetId = presetId || cleanId;
   if (!forceRefresh) {
     const cached = jukeboxDb.getPresetCachedSongs(targetId);
@@ -64,10 +65,15 @@ export async function fetchPlaylistSongs(
     }
   }
 
-  // 2. Fetch fresh from YouTube Music
+  // 2. Fetch fresh from YouTube Music with timeout
   try {
     const yt = await getYTMusic();
-    const videos = await yt.getPlaylistVideos(cleanId);
+    const fetchPromise = yt.getPlaylistVideos(cleanId);
+    const timeoutPromise = new Promise<any[]>((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout mengambil playlist YouTube")), 5000)
+    );
+    const videos = await Promise.race([fetchPromise, timeoutPromise]);
+
     if (!Array.isArray(videos) || videos.length === 0) {
       console.warn(`[trivia-playlist] No videos found in playlist: ${cleanId}`);
       return [];
@@ -75,8 +81,10 @@ export async function fetchPlaylistSongs(
 
     const results: SearchResult[] = [];
     const seenIds = new Set<string>();
+    const limit = maxTracks > 0 ? maxTracks : 150;
 
     for (const v of videos) {
+      if (results.length >= limit) break;
       if (!v || !v.videoId || seenIds.has(v.videoId)) continue;
       const dur = v.duration || 0;
 

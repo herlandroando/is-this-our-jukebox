@@ -206,11 +206,11 @@ async function fetchSameArtistCandidates(
     }
   }
 
-  // 4. Jika masih kurang dan belum di-cache, fetch cepat dari YTMusic (timeout 1.5 detik agar tidak memblokir)
-  if (results.length < 3 && !artistSongsCache.has(normArtist)) {
+  // 4. Jika masih kurang dan pool lagu kecil (< 8), fetch cepat dari YTMusic (timeout ketat 400ms agar lobby instan)
+  if (results.length < 3 && pool.length < 8 && !artistSongsCache.has(normArtist)) {
     try {
       const timeoutPromise = new Promise<any[]>((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), 1500)
+        setTimeout(() => reject(new Error("timeout")), 400)
       );
       const searchPromise = (async () => {
         const { getYTMusic } = await import("../search/index.ts");
@@ -287,11 +287,9 @@ export async function generateTriviaQuestions(
     }
   }
 
-  const questions: TriviaQuestion[] = [];
   const answers = new Map<number, string>(); // roundIndex -> correctOptionId
 
-  for (let index = 0; index < selectedSongs.length; index++) {
-    const song = selectedSongs[index];
+  const questionPromises = selectedSongs.map(async (song, index) => {
     const roundIndex = index + 1;
     const correctOptionId = `opt-${roundIndex}-correct`;
     answers.set(roundIndex, correctOptionId);
@@ -343,15 +341,15 @@ export async function generateTriviaQuestions(
       }
     }
 
-    // 3. Pengecoh cadangan jika opsi unik masih kurang dari 3
+    // 3. Pengecoh cadangan dari riwayat database lokal jika opsi unik masih kurang dari 3 (0ms)
     if (uniqueDecoys.length < 3) {
       try {
-        const mbRecordings = await fetchMusicBrainzArtistRecordings(song.artist, 4);
-        for (const mbTitle of mbRecordings) {
-          const mbTitleNorm = cleanTitle(mbTitle).toLowerCase();
-          if (!usedTitles.has(mbTitleNorm)) {
-            usedTitles.add(mbTitleNorm);
-            uniqueDecoys.push({ title: cleanTitle(mbTitle), artist: song.artist });
+        const topTracks = jukeboxDb.getTopTracks(10);
+        for (const t of topTracks) {
+          const tTitleNorm = cleanTitle(t.title).toLowerCase();
+          if (!usedTitles.has(tTitleNorm)) {
+            usedTitles.add(tTitleNorm);
+            uniqueDecoys.push({ title: cleanTitle(t.title), artist: t.artist });
             if (uniqueDecoys.length >= 3) break;
           }
         }
@@ -381,7 +379,7 @@ export async function generateTriviaQuestions(
     const dur = song.duration || 180;
     const snippetStartSec = Math.max(15, Math.min(35, Math.floor(dur * 0.2)));
 
-    questions.push({
+    return {
       roundIndex,
       totalRounds: selectedSongs.length,
       trackId: song.id,
@@ -392,9 +390,10 @@ export async function generateTriviaQuestions(
       startTime: 0,
       endTime: 0,
       isAudioReady: false,
-    });
-  }
+    } as TriviaQuestion;
+  });
 
+  const questions = await Promise.all(questionPromises);
   return { questions, answers };
 }
 
