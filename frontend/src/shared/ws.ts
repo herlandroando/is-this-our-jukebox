@@ -358,6 +358,14 @@ export class JukeboxClient {
     this.send({ type: "trivia:answer", roundIndex, optionId });
   }
 
+  public reportTriviaAudioIssue() {
+    this.send({ type: "trivia:reportAudioIssue" });
+  }
+
+  public skipTriviaQuestion() {
+    this.send({ type: "trivia:skipQuestion", token: this.token || undefined });
+  }
+
   public closeTriviaGame() {
     this.send({ type: "trivia:close", token: this.token || undefined });
   }

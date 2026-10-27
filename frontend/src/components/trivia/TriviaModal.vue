@@ -55,6 +55,15 @@ const currentRound = computed(() => triviaState.value?.currentRound);
 const roundResult = computed(() => triviaState.value?.roundResult);
 const podium = computed(() => triviaState.value?.podium || []);
 
+const audioIssueReports = computed(() => {
+  return triviaState.value?.audioIssueReports || [];
+});
+
+const hasReportedAudioIssue = computed(() => {
+  if (!myClientId.value) return false;
+  return audioIssueReports.value.some((r) => r.playerId === myClientId.value);
+});
+
 // Category label helper
 const categoryLabel = computed(() => {
   const cat = triviaState.value?.settings.categoryId;
@@ -412,6 +421,29 @@ watch(
   }
 );
 
+// Watch player audio issue reports so Host hears an alert sound
+watch(
+  () => triviaState.value?.audioIssueReports?.length || 0,
+  (newCount, oldCount) => {
+    if (isHost.value && newCount > (oldCount || 0)) {
+      personaAudio.playMiss();
+    }
+  }
+);
+
+function handleReportTriviaAudioIssue() {
+  if (isHost.value || hasReportedAudioIssue.value) return;
+  jukeboxClient.reportTriviaAudioIssue();
+  personaAudio.playCursor();
+}
+
+function handleSkipTriviaQuestionByHost() {
+  if (!isHost.value) return;
+  stopLocalAudio();
+  jukeboxClient.skipTriviaQuestion();
+  personaAudio.playSelect();
+}
+
 function startRoundTimer(
   startTime?: number,
   endTime?: number,
@@ -763,8 +795,51 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Controls: Sound Toggle, Speaker Choice, Exit Button -->
+        <!-- Controls: Audio Feedback / Skip, Sound Toggle, Speaker Choice, Exit Button -->
         <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <!-- Host Only: Skip Broken/Missing Audio Question Button -->
+          <button
+            v-if="isHost && triviaState.status === 'question'"
+            type="button"
+            class="h-8 sm:h-9 px-2 sm:px-2.5 border-2 font-black text-[10px] sm:text-xs uppercase flex items-center gap-1 cursor-pointer transition-all shadow-[2px_2px_0px_#000] active:scale-95"
+            :class="
+              audioIssueReports.length > 0
+                ? 'bg-[#ffe600] border-white text-black animate-pulse'
+                : 'bg-black hover:bg-[#ffe600] text-[#ffe600] hover:text-black border-[#ffe600]'
+            "
+            style="transform: skewX(-8deg);"
+            title="Musik soal ini tidak keluar / rusak? Skip soal ini"
+            @click="handleSkipTriviaQuestionByHost"
+          >
+            <span>⏭️</span>
+            <span class="font-mono">Musik Gak Ada / Skip</span>
+            <span
+              v-if="audioIssueReports.length > 0"
+              class="px-1 bg-[#e60012] text-white border border-white text-[9px] font-black"
+            >
+              {{ audioIssueReports.length }}!
+            </span>
+          </button>
+
+          <!-- Player Only: Alert Host about Missing Audio -->
+          <button
+            v-else-if="!isHost && triviaState.status === 'question'"
+            type="button"
+            :disabled="hasReportedAudioIssue"
+            class="h-8 sm:h-9 px-2 sm:px-2.5 border-2 font-black text-[10px] sm:text-xs uppercase flex items-center gap-1 cursor-pointer transition-all shadow-[2px_2px_0px_#000] active:scale-95"
+            :class="
+              hasReportedAudioIssue
+                ? 'bg-emerald-600/30 border-emerald-400 text-emerald-300 cursor-default'
+                : 'bg-black hover:bg-[#ffe600] text-[#ffe600] hover:text-black border-[#ffe600]'
+            "
+            style="transform: skewX(-8deg);"
+            :title="hasReportedAudioIssue ? 'Alert sudah dikirim ke Host' : 'Kirim alert ke Host bahwa musik tidak terdengar'"
+            @click="handleReportTriviaAudioIssue"
+          >
+            <span>{{ hasReportedAudioIssue ? '✓' : '🔇' }}</span>
+            <span class="font-mono">{{ hasReportedAudioIssue ? 'DILAPORKAN' : 'MUSIK GAK ADA?' }}</span>
+          </button>
+
           <!-- SFX Sound Toggle -->
           <button
             type="button"
@@ -956,6 +1031,27 @@ onBeforeUnmount(() => {
 
         <!-- ================= STAGE 2: BATTLE STAGE (QUESTION) ================= -->
         <div v-else-if="triviaState.status === 'question' && currentRound" class="flex flex-col justify-between gap-3.5 h-full w-full my-auto">
+          <!-- Host Alert Banner when Players report missing audio -->
+          <div
+            v-if="isHost && audioIssueReports.length > 0"
+            class="p-2.5 bg-[#ffe600] border-2 border-white flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-[3px_3px_0px_#000]"
+            style="transform: skewX(-4deg);"
+          >
+            <div class="flex items-center gap-2 text-xs font-black text-black">
+              <span>🔇</span>
+              <span>
+                Alert Pemain ({{ audioIssueReports.map((r) => r.nickname).join(", ") }}): Musik tidak terdengar!
+              </span>
+            </div>
+            <button
+              type="button"
+              class="px-3 py-1 bg-[#e60012] text-white font-black text-xs uppercase border border-white cursor-pointer shadow-[2px_2px_0px_#000] active:scale-95 shrink-0"
+              @click="handleSkipTriviaQuestionByHost"
+            >
+              ⏭️ SKIP SOAL INI
+            </button>
+          </div>
+
           <!-- Autoplay Blocked Banner if applicable -->
           <div
             v-if="isAutoplayBlocked"
@@ -1059,7 +1155,7 @@ onBeforeUnmount(() => {
           <!-- A. Peserta yang ikut menebak -->
           <div
             v-if="isPlayerParticipating"
-            class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-2"
+            class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-2 max-h-[48vh] sm:max-h-none overflow-y-auto pr-1"
           >
             <button
               v-for="(opt, idx) in currentRound.options"

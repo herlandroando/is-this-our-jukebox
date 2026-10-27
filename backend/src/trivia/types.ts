@@ -126,4 +126,5 @@ export interface TriviaGameState {
   roundResult?: TriviaRoundResult;
   podium?: TriviaPodiumEntry[];
   countdownSec?: number;
+  audioIssueReports?: Array<{ playerId: string; nickname: string; timestamp: number }>;
 }

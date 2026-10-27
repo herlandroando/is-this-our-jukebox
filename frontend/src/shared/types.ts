@@ -123,6 +123,8 @@ export type ClientMessage =
   | { type: "trivia:audioReady"; roundIndex: number }
   | { type: "trivia:setAudioMode"; mode: "host" | "self" }
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
+  | { type: "trivia:reportAudioIssue" }
+  | { type: "trivia:skipQuestion"; token?: string }
   | { type: "trivia:close"; token?: string };
 
 export interface ReactionBroadcastItem {
@@ -311,6 +313,7 @@ export interface TriviaGameState {
   roundResult?: TriviaRoundResult;
   podium?: TriviaPodiumEntry[];
   countdownSec?: number;
+  audioIssueReports?: Array<{ playerId: string; nickname: string; timestamp: number }>;
 }
 
 export interface ToastItem {

@@ -132,6 +132,8 @@ export type ClientMessage =
   | { type: "trivia:audioReady"; roundIndex: number }
   | { type: "trivia:setAudioMode"; mode: "host" | "self" }
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
+  | { type: "trivia:reportAudioIssue" }
+  | { type: "trivia:skipQuestion"; token?: string }
   | { type: "trivia:close"; token?: string };
 
 export type ServerMessage =

@@ -404,6 +404,7 @@ export class TriviaGameManager {
     this.state.status = "question";
     this.state.currentRound = question;
     this.state.roundResult = undefined;
+    this.state.audioIssueReports = [];
 
     console.log(
       `[trivia] Ronde ${roundIndex}/${question.totalRounds} dimulai (menunggu audio barrier ready): Track ID ${question.trackId}.`
@@ -563,6 +564,42 @@ export class TriviaGameManager {
     this.checkAllAnsweredEarly();
 
     return { success: true, points, isCorrect };
+  }
+
+  public reportAudioIssue(clientId: string, nickname?: string) {
+    if (this.state.status !== "question") return;
+    if (!this.state.audioIssueReports) {
+      this.state.audioIssueReports = [];
+    }
+    const displayName =
+      nickname?.trim() || this.state.players[clientId]?.nickname || "Pemain";
+    const existing = this.state.audioIssueReports.find((r) => r.playerId === clientId);
+    if (existing) {
+      existing.timestamp = Date.now();
+    } else {
+      this.state.audioIssueReports.push({
+        playerId: clientId,
+        nickname: displayName,
+        timestamp: Date.now(),
+      });
+      queueStore.toast(
+        `🔇 ${displayName} melaporkan musik tidak terdengar! Host bisa tekan Skip Lagu.`,
+        "warning"
+      );
+    }
+    this.broadcast("stateSync", this.getState());
+  }
+
+  public skipCurrentQuestion(requesterId: string, isAdmin = false): boolean {
+    if (this.state.status !== "question") return false;
+    if (!isAdmin && requesterId !== this.state.hostClientId) return false;
+
+    queueStore.toast(
+      "⏭️ Host melewati soal karena kendala musik.",
+      "info"
+    );
+    this.endRound();
+    return true;
   }
 
   private checkAllAnsweredEarly() {

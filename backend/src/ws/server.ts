@@ -664,6 +664,26 @@ export class JukeboxWsHub {
         break;
       }
 
+      case "trivia:reportAudioIssue": {
+        triviaGameManager.reportAudioIssue(ws.data.id, ws.data.nickname);
+        break;
+      }
+
+      case "trivia:skipQuestion": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host yang dapat melewati soal!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        triviaGameManager.skipCurrentQuestion(ws.data.id, true);
+        break;
+      }
+
       case "trivia:close": {
         if (!canControlPlayback(ws, msg.token)) {
           ws.send(
