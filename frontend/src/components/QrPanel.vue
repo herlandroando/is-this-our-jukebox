@@ -21,10 +21,8 @@ const emit = defineEmits<{
   (e: "selectMode", mode: "lan" | "public"): void;
 }>();
 
-// Selected mode: default to public if publicUrl is provided, else lan
 const selectedMode = ref<"lan" | "public">(props.publicUrl ? "public" : "lan");
 
-// If publicUrl arrives dynamically (e.g. from quick tunnel runner), auto-switch to public
 watch(
   () => props.publicUrl,
   (newVal) => {
@@ -46,11 +44,11 @@ const isPublic = computed(() => selectedMode.value === "public" && !!props.publi
 const badgeText = computed(() => {
   if (isPublic.value) {
     if (props.tunnelMode === "quick" || props.publicUrl?.includes("trycloudflare.com")) {
-      return "⚡ Quick Tunnel";
+      return "⚡ QUICK TUNNEL";
     }
-    return "🌐 Custom Domain";
+    return "🌐 CUSTOM DOMAIN";
   }
-  return "🏢 LAN Mobile";
+  return "🏢 LAN MOBILE";
 });
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -60,10 +58,10 @@ async function renderQr() {
   if (!canvasRef.value || !activeUrl.value) return;
   try {
     await QRCode.toCanvas(canvasRef.value, activeUrl.value, {
-      width: 120,
+      width: 96,
       margin: 1,
       color: {
-        dark: "#f8fafc",
+        dark: "#ffffff",
         light: "#00000000",
       },
     });
@@ -92,211 +90,101 @@ function copyUrl() {
 </script>
 
 <template>
-  <div class="qr-card glass-panel">
-    <div class="qr-canvas-wrapper">
+  <div
+    class="p5-qr-card relative bg-[#0b0b14] border-2 border-white p-3.5 sm:p-4 flex items-center gap-3.5 shadow-[6px_6px_0px_#000000] select-none overflow-hidden"
+    style="transform: skewX(-2deg);"
+  >
+    <!-- Red Accent Corner Slash -->
+    <div class="pointer-events-none absolute -top-6 -right-6 w-16 h-16 bg-[#e60012] rotate-45 opacity-90"></div>
+
+    <!-- High-Contrast QR Frame -->
+    <div
+      class="relative shrink-0 bg-black border-2 border-white p-1.5 flex items-center justify-center shadow-[3px_3px_0px_#e60012]"
+      style="transform: skewX(2deg);"
+    >
       <canvas ref="canvasRef"></canvas>
     </div>
 
-    <div class="qr-info">
-      <div class="qr-title-row">
-        <h4>Connect Coworkers</h4>
-        <span class="qr-badge" :class="{ 'is-public': isPublic }">{{ badgeText }}</span>
+    <!-- Info & Controls -->
+    <div class="flex-1 min-w-0 flex flex-col gap-1.5" style="transform: skewX(2deg);">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 bg-[#e60012] rotate-45"></span>
+          <h4 class="text-xs sm:text-sm font-black italic uppercase tracking-wider text-white">
+            CONNECT COWORKERS // QR
+          </h4>
+        </div>
+
+        <span
+          class="px-2 py-0.5 border text-[9px] font-mono font-black uppercase tracking-wider shadow-[2px_2px_0px_#000]"
+          :class="
+            isPublic
+              ? 'bg-[#10b981] text-black border-white'
+              : 'bg-[#00e5ff] text-black border-black'
+          "
+          style="transform: skewX(-10deg);"
+        >
+          {{ badgeText }}
+        </span>
       </div>
 
       <!-- Mode Switcher (Visible when public tunnel is active alongside LAN) -->
-      <div v-if="publicUrl && lanUrl" class="qr-mode-switch">
+      <div v-if="publicUrl && lanUrl" class="flex items-center gap-1.5 my-0.5">
         <button
           type="button"
-          class="mode-btn"
-          :class="{ 'is-active': selectedMode === 'lan' }"
+          class="flex-1 py-1 px-2 border text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95"
+          :class="
+            selectedMode === 'lan'
+              ? 'bg-[#e60012] text-white border-white shadow-[2px_2px_0px_#000]'
+              : 'bg-black text-slate-400 border-white/30 hover:text-white'
+          "
+          style="transform: skewX(-10deg);"
           @click="setMode('lan')"
         >
-          🏢 LAN Wi-Fi
+          🏢 LAN WI-FI
         </button>
         <button
           type="button"
-          class="mode-btn"
-          :class="{ 'is-active': selectedMode === 'public' }"
+          class="flex-1 py-1 px-2 border text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95"
+          :class="
+            selectedMode === 'public'
+              ? 'bg-[#00e5ff] text-black border-white shadow-[2px_2px_0px_#000]'
+              : 'bg-black text-slate-400 border-white/30 hover:text-white'
+          "
+          style="transform: skewX(-10deg);"
           @click="setMode('public')"
         >
-          🌐 Public Tunnel
+          🌐 PUBLIC TUNNEL
         </button>
       </div>
 
-      <p v-else>Scan to request, vote, and sing from any smartphone.</p>
-      
-      <div class="url-copy-box" @click="copyUrl">
-        <span class="url-text">{{ activeUrl }}</span>
-        <button class="copy-btn" :class="{ 'is-copied': copied }">
-          <UiIcon v-if="copied" name="check" :size="13" :strokeWidth="2.5" />
-          <UiIcon v-else name="copy" :size="13" />
-          <span>{{ copied ? "Copied" : "Copy" }}</span>
+      <p v-else class="text-[11px] font-medium text-slate-300 leading-tight">
+        Scan QR untuk request lagu, voting, dan ikut minigame dari HP/laptop.
+      </p>
+
+      <!-- URL Copy Bar -->
+      <div
+        class="mt-0.5 bg-black border border-white/40 hover:border-[#00e5ff] px-2.5 py-1 flex items-center justify-between gap-2 cursor-pointer transition-colors group"
+        style="transform: skewX(-6deg);"
+        @click="copyUrl"
+      >
+        <span class="text-[11px] font-mono font-bold text-[#00e5ff] truncate select-all">
+          {{ activeUrl }}
+        </span>
+        <button
+          type="button"
+          class="px-2 py-0.5 border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 transition-all cursor-pointer"
+          :class="
+            copied
+              ? 'bg-[#10b981] text-black border-white'
+              : 'bg-[#e60012] group-hover:bg-white text-white group-hover:text-black border-white'
+          "
+        >
+          <UiIcon v-if="copied" name="check" :size="11" :strokeWidth="2.5" />
+          <UiIcon v-else name="copy" :size="11" />
+          <span>{{ copied ? "COPIED" : "COPY" }}</span>
         </button>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.qr-card {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 1.15rem 1.35rem;
-  background: rgba(14, 17, 26, 0.7);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.qr-canvas-wrapper {
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0.45rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
-}
-
-.qr-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  flex: 1;
-  min-width: 0;
-}
-
-.qr-title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.qr-title-row h4 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: -0.01em;
-}
-
-.qr-badge {
-  font-size: 0.65rem;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  color: var(--accent-primary);
-  background: rgba(99, 102, 241, 0.15);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  padding: 0.1rem 0.45rem;
-  border-radius: var(--radius-full);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: all var(--transition-fast);
-}
-
-.qr-badge.is-public {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.15);
-  border-color: rgba(52, 211, 153, 0.4);
-}
-
-.qr-mode-switch {
-  display: flex;
-  gap: 0.3rem;
-  margin: 0.2rem 0;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 0.2rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.mode-btn {
-  flex: 1;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  border-radius: 6px;
-  color: #94a3b8;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.mode-btn:hover {
-  color: #fff;
-}
-
-.mode-btn.is-active {
-  color: #fff;
-  background: rgba(99, 102, 241, 0.35);
-  border: 1px solid rgba(99, 102, 241, 0.5);
-  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
-}
-
-.qr-info p {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-}
-
-.url-copy-box {
-  margin-top: 0.35rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.3rem 0.45rem 0.3rem 0.85rem;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.url-copy-box:hover {
-  background: rgba(0, 0, 0, 0.5);
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.url-text {
-  font-size: 0.78rem;
-  font-family: var(--font-mono);
-  color: #a5b4fc;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  user-select: all;
-}
-
-.copy-btn {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.3rem 0.75rem;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.copy-btn:hover {
-  background: var(--accent-primary);
-  border-color: transparent;
-  box-shadow: 0 0 14px -2px var(--accent-glow);
-}
-
-.copy-btn.is-copied {
-  background: #10b981;
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 0 14px -2px rgba(16, 185, 129, 0.5);
-}
-</style>

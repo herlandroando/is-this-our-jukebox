@@ -17,9 +17,10 @@ const props = defineProps<{
   isTunedIn: boolean;
   isMuted: boolean;
   personalVolume: number;
-  syncStatus: HeadphoneSyncStatus;
-  driftMs: number;
-  allowRemoteAudio: boolean;
+  syncStatus?: HeadphoneSyncStatus;
+  driftMs?: number;
+  allowRemoteAudio?: boolean;
+  hideHeadphoneToggle?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -73,6 +74,15 @@ function handleProgressClick(e: MouseEvent) {
   const clickX = e.clientX - rect.left;
   const ratio = Math.max(0, Math.min(1, clickX / rect.width));
   emit("seek", ratio * (props.duration || 1));
+}
+
+function handleVolumeClick(e: MouseEvent) {
+  if (!props.isDjOrHost) return;
+  const target = e.currentTarget as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+  emit("updateVolume", Math.round(ratio * 100));
 }
 </script>
 
@@ -164,13 +174,19 @@ function handleProgressClick(e: MouseEvent) {
             </div>
             <span class="text-fuchsia-400 font-bold tabular-nums">{{ volume }}%</span>
           </div>
-          <div class="h-2 bg-black/80 border border-white/30 overflow-hidden" style="transform: skewX(-14deg);">
-            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500" :style="{ width: `${volume}%` }"></div>
+          <div
+            class="h-2.5 bg-black/80 border border-white/30 overflow-hidden"
+            :class="isDjOrHost ? 'cursor-pointer hover:border-fuchsia-400' : ''"
+            style="transform: skewX(-14deg);"
+            :title="isDjOrHost ? 'Klik untuk atur Master Volume' : ''"
+            @click="handleVolumeClick"
+          >
+            <div class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-150" :style="{ width: `${volume}%` }"></div>
           </div>
         </div>
 
-        <!-- Silent Disco Headphone Pill Toggle -->
-        <div class="shrink-0 flex items-center gap-1.5">
+        <!-- Silent Disco Headphone Pill Toggle (Client) -->
+        <div v-if="!hideHeadphoneToggle" class="shrink-0 flex items-center gap-1.5">
           <button
             type="button"
             class="h-7 px-2.5 border-2 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
@@ -187,6 +203,9 @@ function handleProgressClick(e: MouseEvent) {
           </button>
         </div>
       </div>
+
+      <!-- Optional Host Audio Spectrum Visualizer Slot -->
+      <slot name="visualizer" />
 
       <!-- Bottom Combat Controls Row -->
       <div class="flex items-center justify-between gap-2 pt-1 border-t border-white/15">
