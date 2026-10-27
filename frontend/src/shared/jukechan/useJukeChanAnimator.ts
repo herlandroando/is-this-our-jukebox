@@ -15,6 +15,9 @@ export interface RigDomRefs {
   rootGroup: SVGGElement | null;
   bodyGroup: SVGGElement | null;
   headGroup: SVGGElement | null;
+  armsGroup: SVGGElement | null;
+  armLGroup: SVGGElement | null;
+  armRGroup: SVGGElement | null;
   bangsGroup: SVGGElement | null;
   sideLGroup: SVGGElement | null;
   sideRGroup: SVGGElement | null;
@@ -45,6 +48,8 @@ export function useJukeChanAnimator(
   const params = shallowRef<RigParams>(createDefaultParams());
   let lastDiscreteKey = "";
   let lastTriggerMs = 0;
+  let lastSyncedMouthOpen = 0;
+  let lastSyncedEyeOpen = 1;
 
   // Pointer target normalized (-1..1)
   let pointerX = 0;
@@ -314,14 +319,66 @@ export function useJukeChanAnimator(
     p.hair.ahogeRot = ahogeRot;
 
     // Direct fast SVG transform writes for smooth 60fps
+    const breathScaleY = 1 + breath * 0.016;
+    const breathScaleX = 1 + breath * 0.008;
+    const bodyTransform = `translate(0, ${bounce.toFixed(2)}) rotate(${bodySway.toFixed(2)}, 200, 460) scale(${breathScaleX.toFixed(4)}, ${breathScaleY.toFixed(4)})`;
+
     if (domRefs.bodyGroup) {
-      const breathScaleY = 1 + breath * 0.016;
-      const breathScaleX = 1 + breath * 0.008;
-      domRefs.bodyGroup.setAttribute(
-        "transform",
-        `translate(0, ${bounce.toFixed(2)}) rotate(${bodySway.toFixed(2)}, 200, 460) scale(${breathScaleX.toFixed(4)}, ${breathScaleY.toFixed(4)})`
-      );
+      domRefs.bodyGroup.setAttribute("transform", bodyTransform);
     }
+    if (domRefs.armsGroup) {
+      domRefs.armsGroup.setAttribute("transform", bodyTransform);
+    }
+
+    // 60fps Per-Arm Kinematics (locked to torso + head/earcup compensation + smooth wave)
+    if (domRefs.armLGroup && domRefs.armRGroup) {
+      const idleSway = Math.sin(nowMs * 0.0024) * 1.4 - bodySway * 0.35;
+      let armLTransform = `rotate(${idleSway.toFixed(2)}, 90, 366)`;
+      let armRTransform = `rotate(${(-idleSway).toFixed(2)}, 310, 366)`;
+
+      if (armPose === "holdEarcup") {
+        // Right hand tracks the right headphone earcup on headGroup smoothly at 60fps
+        const earDx = headYaw * 6.0 - headRoll * 1.35;
+        const earDy = headPitch * 5.2 + headRoll * 1.65;
+        const grooveRot = armWavePhase * 1.6 + headRoll * 0.35;
+        armRTransform = `translate(${(earDx * 0.55).toFixed(2)}, ${(earDy * 0.55).toFixed(2)}) rotate(${grooveRot.toFixed(2)}, 295, 395)`;
+      } else if (armPose === "peace") {
+        armLTransform = `rotate(${(armWavePhase * 4.2 + headRoll * 0.25).toFixed(2)}, 102, 395)`;
+      } else if (armPose === "wave") {
+        armLTransform = `rotate(${(armWavePhase * 11.5).toFixed(2)}, 96, 388)`;
+      } else if (armPose === "thumbsUp") {
+        armLTransform = `translate(0, ${(armWavePhase * 3.2).toFixed(2)}) rotate(${(armWavePhase * 2.4).toFixed(2)}, 102, 395)`;
+      } else if (armPose === "holdMic") {
+        const micDx = headYaw * 3.5;
+        const micDy = headPitch * 3.5 + armWavePhase * 2.2;
+        armRTransform = `translate(${micDx.toFixed(2)}, ${micDy.toFixed(2)}) rotate(${(headRoll * 0.4).toFixed(2)}, 270, 395)`;
+      } else if (armPose === "clap") {
+        const clapX = armWavePhase * 4.5;
+        const clapY = -Math.abs(armWavePhase) * 2.2;
+        armLTransform = `translate(${(-clapX).toFixed(2)}, ${clapY.toFixed(2)}) rotate(${(-armWavePhase * 3.2).toFixed(2)}, 125, 420)`;
+        armRTransform = `translate(${clapX.toFixed(2)}, ${clapY.toFixed(2)}) rotate(${(armWavePhase * 3.2).toFixed(2)}, 275, 420)`;
+      } else if (armPose === "heartHands" || armPose === "claspedSad") {
+        const liftY = armWavePhase * 2.4 - breath * 1.5;
+        armLTransform = `translate(0, ${liftY.toFixed(2)})`;
+        armRTransform = `translate(0, ${liftY.toFixed(2)})`;
+      } else if (armPose === "crossedPout") {
+        const huffY = -breath * 2.4;
+        armLTransform = `translate(0, ${huffY.toFixed(2)})`;
+        armRTransform = `translate(0, ${huffY.toFixed(2)})`;
+      } else if (
+        armPose === "fanHot" ||
+        armPose === "airGuitar" ||
+        armPose === "surprisedUp"
+      ) {
+        const rot = armWavePhase * 8.5;
+        armLTransform = `rotate(${rot.toFixed(2)}, 104, 392)`;
+        armRTransform = `rotate(${(-rot).toFixed(2)}, 296, 392)`;
+      }
+
+      domRefs.armLGroup.setAttribute("transform", armLTransform);
+      domRefs.armRGroup.setAttribute("transform", armRTransform);
+    }
+
     if (domRefs.headGroup) {
       const tx = headYaw * 6.5;
       const ty = bounce * 1.05 + headPitch * 5.5;
@@ -376,15 +433,21 @@ export function useJukeChanAnimator(
       );
     }
 
-    // Discrete/throttled reactivity trigger for template morphs (v-if, mouth, arm pose)
-    // Avoids 60fps Vue Virtual DOM diffing of 1000+ SVG nodes while preserving full 60fps transform smoothness
-    const discreteKey = `${armPose}|${p.eyeSpecial}|${p.mouthShape}|${p.cheekPuff > 0.4}|${p.eyeSmile > 0.5}|${p.blush}|${currentMoodKey.value}`;
-    const needsFastSync = p.mouthOpen > 0.1 || finalEyeOpen < 0.95;
-    const nowThrottleMs = needsFastSync ? 40 : 100;
+    // 60fps reactivity trigger whenever mouth/eyelid morphs or discrete state changes
+    const discreteKey = `${armPose}|${p.eyeSpecial}|${p.mouthShape}|${p.cheekPuff > 0.4}|${p.eyeSmile > 0.5}|${p.blush.toFixed(2)}|${currentMoodKey.value}`;
+    const mouthDelta = Math.abs(mouthOpen - lastSyncedMouthOpen);
+    const eyeDelta = Math.abs(finalEyeOpen - lastSyncedEyeOpen);
+    const needs60fpsMorph = mouthDelta > 0.012 || eyeDelta > 0.012;
 
-    if (discreteKey !== lastDiscreteKey || nowMs - lastTriggerMs >= nowThrottleMs) {
+    if (
+      discreteKey !== lastDiscreteKey ||
+      needs60fpsMorph ||
+      nowMs - lastTriggerMs >= 80
+    ) {
       lastDiscreteKey = discreteKey;
       lastTriggerMs = nowMs;
+      lastSyncedMouthOpen = mouthOpen;
+      lastSyncedEyeOpen = finalEyeOpen;
       triggerRef(params);
     }
 

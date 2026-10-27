@@ -44,11 +44,15 @@ const backHairGroup = ref<SVGGElement | null>(null);
 const ahogeGroup = ref<SVGGElement | null>(null);
 const irisLGroup = ref<SVGGElement | null>(null);
 const irisRGroup = ref<SVGGElement | null>(null);
+const armsCompRef = ref<InstanceType<typeof JukeChanArms> | null>(null);
 
 const domRefs = reactive<RigDomRefs>({
   rootGroup: null,
   bodyGroup: null,
   headGroup: null,
+  armsGroup: null,
+  armLGroup: null,
+  armRGroup: null,
   bangsGroup: null,
   sideLGroup: null,
   sideRGroup: null,
@@ -67,6 +71,7 @@ watch(
     rootGroup,
     bodyGroup,
     headGroup,
+    armsCompRef,
     bangsGroup,
     sideLGroup,
     sideRGroup,
@@ -79,6 +84,9 @@ watch(
     domRefs.rootGroup = rootGroup.value;
     domRefs.bodyGroup = bodyGroup.value;
     domRefs.headGroup = headGroup.value;
+    domRefs.armsGroup = armsCompRef.value?.armsGroup ?? null;
+    domRefs.armLGroup = armsCompRef.value?.armLGroup ?? null;
+    domRefs.armRGroup = armsCompRef.value?.armRGroup ?? null;
     domRefs.bangsGroup = bangsGroup.value;
     domRefs.sideLGroup = sideLGroup.value;
     domRefs.sideRGroup = sideRGroup.value;
@@ -1045,6 +1053,7 @@ function handleHitZone(zone: HitZone, ev: MouseEvent) {
       <!-- 4. FOREGROUND ARMS & HANDS LAYER (Layered over Torso & Earcup)    -->
       <!-- ================================================================= -->
       <JukeChanArms
+        ref="armsCompRef"
         :pose="params.armPose"
         :wave-phase="params.armWavePhase"
         :primary-color="currentMood.primary"
