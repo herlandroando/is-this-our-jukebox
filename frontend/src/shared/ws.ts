@@ -33,6 +33,10 @@ export class JukeboxClient {
   public triviaPresets = ref<import("./types.ts").TriviaPresetItem[]>([]);
   public youtubeAuthStatus = ref<import("./types.ts").YouTubeCookieStatus | null>(null);
 
+  // Lyric Bomb Game State
+  public lyricBombState = ref<import("./types.ts").LyricBombState | null>(null);
+  public isLyricBombInvitationOpen = ref(false);
+
   private timeListeners = new Set<(currentTime: number, duration: number) => void>();
   private seekListeners = new Set<(time: number) => void>();
   private reactionListeners = new Set<(reaction: ReactionBroadcastItem) => void>();
@@ -132,6 +136,14 @@ export class JukeboxClient {
       // Jika game tebak lagu sedang aktif, langsung kirim join untuk reconnect / sync
       if (this.triviaState.value && this.triviaState.value.status !== "idle") {
         this.joinTriviaLobby();
+      }
+      // Jika game lyric bomb sedang aktif dan klien adalah peserta, kirim join untuk sync
+      if (
+        this.lyricBombState.value &&
+        this.lyricBombState.value.status !== "idle" &&
+        this.lyricBombState.value.players[this.clientId.value]
+      ) {
+        this.joinLyricBomb();
       }
     };
 
@@ -316,6 +328,30 @@ export class JukeboxClient {
         this.triviaPresets.value = msg.presets;
         break;
 
+      case "lyricbomb:stateSync":
+        this.lyricBombState.value = msg.state;
+        if (msg.state.status === "idle") {
+          this.isLyricBombInvitationOpen.value = false;
+        } else if (
+          this.clientId.value &&
+          msg.state.players[this.clientId.value] &&
+          msg.state.players[this.clientId.value].isOnline === false
+        ) {
+          this.joinLyricBomb();
+        }
+        break;
+
+      case "lyricbomb:lobbyCreated":
+        if (this.clientId.value && msg.hostId !== this.clientId.value) {
+          this.isLyricBombInvitationOpen.value = true;
+        }
+        break;
+
+      case "lyricbomb:closed":
+        this.lyricBombState.value = null;
+        this.isLyricBombInvitationOpen.value = false;
+        break;
+
       case "youtubeAuthStatus":
         this.youtubeAuthStatus.value = msg.status;
         break;
@@ -486,6 +522,79 @@ export class JukeboxClient {
     setTimeout(() => {
       this.toasts.value = this.toasts.value.filter((t) => t.id !== id);
     }, 4500);
+  }
+
+  // Lyric Bomb Action Helpers
+  public createLyricBomb() {
+    this.send({ type: "lyricbomb:create", token: this.token || undefined });
+  }
+
+  public joinLyricBomb() {
+    this.send({ type: "lyricbomb:join" });
+  }
+
+  public leaveLyricBomb() {
+    this.send({ type: "lyricbomb:leave" });
+  }
+
+  public setLyricBombReady(isReady: boolean) {
+    this.send({ type: "lyricbomb:ready", isReady });
+  }
+
+  public setLyricBombHostPlaying(isPlaying: boolean) {
+    this.send({ type: "lyricbomb:setHostPlaying", isPlaying, token: this.token || undefined });
+  }
+
+  public setLyricBombStartingDuration(durationSec: number) {
+    this.send({ type: "lyricbomb:setStartingDuration", durationSec, token: this.token || undefined });
+  }
+
+  public setLyricBombAudioMode(mode: "host" | "self") {
+    this.send({ type: "lyricbomb:setAudioMode", mode });
+  }
+
+  public signalLyricBombAudioReady(segmentIndex: number) {
+    this.send({ type: "lyricbomb:audioReady", segmentIndex });
+  }
+
+  public startLyricBomb() {
+    this.send({ type: "lyricbomb:start", token: this.token || undefined });
+  }
+
+  public selectLyricBombSong(song: { videoId: string; title: string; artist: string; duration: number; albumArt?: string }) {
+    this.send({ type: "lyricbomb:selectSong", song });
+  }
+
+  public pickRandomLyricBombSong() {
+    this.send({ type: "lyricbomb:randomSong" });
+  }
+
+  public tapLyricBombWord(chipId: string) {
+    this.send({ type: "lyricbomb:wordTap", chipId });
+  }
+
+  public useLyricBombHint() {
+    this.send({ type: "lyricbomb:useHint" });
+  }
+
+  public resetLyricBombWords() {
+    this.send({ type: "lyricbomb:resetWords" });
+  }
+
+  public reportLyricBombAudioIssue() {
+    this.send({ type: "lyricbomb:reportAudioIssue" });
+  }
+
+  public skipLyricBombSong() {
+    this.send({ type: "lyricbomb:skipSong", token: this.token || undefined });
+  }
+
+  public rematchLyricBomb() {
+    this.send({ type: "lyricbomb:rematch", token: this.token || undefined });
+  }
+
+  public closeLyricBomb() {
+    this.send({ type: "lyricbomb:close", token: this.token || undefined });
   }
 
   public send(msg: ClientMessage) {

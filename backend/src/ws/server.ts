@@ -4,6 +4,7 @@ import type { ClientMessage, MemberRole, ServerMessage, ServerState } from "../t
 import { queueStore } from "../queue/store.ts";
 import { verifyAdminToken } from "../adminToken.ts";
 import { triviaGameManager } from "../trivia/gameManager.ts";
+import { lyricBombGameManager } from "../lyricbomb/gameManager.ts";
 
 export interface WsUserData {
   id: string;
@@ -110,6 +111,33 @@ export class JukeboxWsHub {
         state,
       });
     });
+
+    // Listen to Lyric Bomb Game events and broadcast
+    lyricBombGameManager.subscribe((state, eventType, payload) => {
+      if (eventType === "lobbyCreated") {
+        this.broadcast({
+          type: "lyricbomb:lobbyCreated",
+          hostId: payload.hostId,
+        });
+      } else if (eventType === "wordTapWrong" && payload) {
+        this.broadcast({
+          type: "lyricbomb:wordTapWrong",
+          playerId: payload.playerId,
+          chipId: payload.chipId,
+          penaltySec: payload.penaltySec,
+          timeLeft: payload.timeLeft,
+        });
+      } else if (eventType === "closed") {
+        this.broadcast({
+          type: "lyricbomb:closed",
+        });
+      }
+
+      this.broadcast({
+        type: "lyricbomb:stateSync",
+        state,
+      });
+    });
   }
 
   public handleOpen(ws: ServerWebSocket<WsUserData>) {
@@ -161,6 +189,17 @@ export class JukeboxWsHub {
         })
       );
     }
+
+    // 6. Send current Lyric Bomb Game state if active
+    const lbState = lyricBombGameManager.getState();
+    if (lbState.status !== "idle") {
+      ws.send(
+        JSON.stringify({
+          type: "lyricbomb:stateSync",
+          state: lbState,
+        })
+      );
+    }
   }
 
   public handleClose(ws: ServerWebSocket<WsUserData>) {
@@ -173,6 +212,7 @@ export class JukeboxWsHub {
       this.clientSockets.delete(clientId);
       this.lastShoutoutTimes.delete(clientId);
       triviaGameManager.leaveLobby(clientId, false);
+      lyricBombGameManager.leaveLobby(clientId, false);
       queueStore.removeMember(clientId, this.clientSockets.size);
     } else {
       queueStore.setActiveListeners(this.clientSockets.size);
@@ -240,6 +280,7 @@ export class JukeboxWsHub {
         ws.data.nickname = cleanName;
         queueStore.updateMemberNickname(clientId, cleanName);
         triviaGameManager.updatePlayerNickname(clientId, cleanName);
+        lyricBombGameManager.updatePlayerNickname(clientId, cleanName);
         break;
       }
 
@@ -735,6 +776,223 @@ export class JukeboxWsHub {
           break;
         }
         triviaGameManager.closeGame();
+        break;
+      }
+
+      // Lyric Bomb Game Handlers
+      case "lyricbomb:create": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat membuat game Lyric Bomb!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        lyricBombGameManager.createLobby(ws.data.id, ws.data.nickname);
+        break;
+      }
+
+      case "lyricbomb:join": {
+        lyricBombGameManager.joinLobby(ws.data.id, ws.data.nickname);
+        break;
+      }
+
+      case "lyricbomb:leave": {
+        lyricBombGameManager.leaveLobby(ws.data.id, true);
+        break;
+      }
+
+      case "lyricbomb:ready": {
+        lyricBombGameManager.setReady(ws.data.id, msg.isReady);
+        break;
+      }
+
+      case "lyricbomb:setHostPlaying": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat mengubah mode bermain Host!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        lyricBombGameManager.setHostPlaying(ws.data.id, msg.isPlaying);
+        break;
+      }
+
+      case "lyricbomb:setAudioMode": {
+        lyricBombGameManager.setPlayerAudioMode(ws.data.id, msg.mode);
+        break;
+      }
+
+      case "lyricbomb:audioReady": {
+        lyricBombGameManager.onAudioReady(msg.segmentIndex, ws.data.id);
+        break;
+      }
+
+      case "lyricbomb:setStartingDuration": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat mengatur durasi bom awal!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        if (typeof msg.durationSec === "number") {
+          lyricBombGameManager.setStartingDuration(msg.durationSec);
+        }
+        break;
+      }
+
+      case "lyricbomb:start": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat memulai game!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        const res = lyricBombGameManager.startGame();
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "warning",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:selectSong": {
+        const res = await lyricBombGameManager.selectSong(ws.data.id, msg.song);
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "error",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:randomSong": {
+        const res = await lyricBombGameManager.pickRandomSong(ws.data.id);
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "error",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:wordTap": {
+        lyricBombGameManager.submitWordTap(ws.data.id, msg.chipId);
+        break;
+      }
+
+      case "lyricbomb:useHint": {
+        const res = lyricBombGameManager.useHint(ws.data.id);
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "warning",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:resetWords": {
+        lyricBombGameManager.resetTappedWords(ws.data.id);
+        break;
+      }
+
+      case "lyricbomb:reportAudioIssue": {
+        const res = lyricBombGameManager.reportAudioIssue(ws.data.id, ws.data.nickname);
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "warning",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:skipSong": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host yang dapat melewati (skip) lagu!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        const res = lyricBombGameManager.skipCurrentSong(ws.data.id, true);
+        if (!res.success && res.error) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: res.error,
+              toastType: "warning",
+            })
+          );
+        }
+        break;
+      }
+
+      case "lyricbomb:rematch": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat mengulang game!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        lyricBombGameManager.rematchGame();
+        break;
+      }
+
+      case "lyricbomb:close": {
+        if (!canControlPlayback(ws, msg.token)) {
+          ws.send(
+            JSON.stringify({
+              type: "toast",
+              message: "Hanya Host atau DJ yang dapat menutup game!",
+              toastType: "error",
+            })
+          );
+          break;
+        }
+        lyricBombGameManager.closeGame();
         break;
       }
     }

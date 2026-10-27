@@ -569,6 +569,41 @@ class JukeboxDatabase {
     }
   }
 
+  public getOfficePlaylistTracks(limit: number = 80): TopTrackResult[] {
+    try {
+      const rows = this.db
+        .query(`
+          SELECT
+            id, provider, permalink, title, artist, thumbnail, duration,
+            COUNT(*) as play_count,
+            MAX(played_at) as last_played_at
+          FROM track_stats
+          WHERE provider = 'yt'
+            AND id NOT LIKE 'sc:%'
+            AND ${NOT_TESTING_TRACK_SQL}
+          GROUP BY id
+          ORDER BY play_count DESC, last_played_at DESC
+          LIMIT ?
+        `)
+        .all(limit) as any[];
+
+      return rows.map((r) => ({
+        id: r.id,
+        provider: r.provider,
+        permalink: r.permalink || undefined,
+        title: r.title,
+        artist: r.artist,
+        thumbnail: r.thumbnail || "",
+        duration: r.duration || 210,
+        playCount: r.play_count || 1,
+        lastPlayedAt: r.last_played_at,
+      }));
+    } catch (err) {
+      console.error("[db] Error getting office playlist tracks:", err);
+      return [];
+    }
+  }
+
   // --- Server Meta Persistence ---
 
   public saveMeta(key: string, value: string) {

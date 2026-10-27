@@ -93,6 +93,7 @@ export interface ServerState {
   publicUrl?: string | null;
   tunnelMode?: string;
   triviaState?: import("./trivia/types.ts").TriviaGameState;
+  lyricBombState?: import("./lyricbomb/types.ts").LyricBombState;
 }
 
 export type ClientMessage =
@@ -135,6 +136,28 @@ export type ClientMessage =
   | { type: "trivia:reportAudioIssue" }
   | { type: "trivia:skipQuestion"; token?: string }
   | { type: "trivia:close"; token?: string }
+  // Lyric Bomb Game
+  | { type: "lyricbomb:create"; token?: string }
+  | { type: "lyricbomb:join" }
+  | { type: "lyricbomb:leave" }
+  | { type: "lyricbomb:ready"; isReady: boolean }
+  | { type: "lyricbomb:setHostPlaying"; isPlaying: boolean; token?: string }
+  | { type: "lyricbomb:setStartingDuration"; durationSec: number; token?: string }
+  | { type: "lyricbomb:setAudioMode"; mode: "host" | "self" }
+  | { type: "lyricbomb:audioReady"; segmentIndex: number }
+  | { type: "lyricbomb:start"; token?: string }
+  | {
+      type: "lyricbomb:selectSong";
+      song: { videoId: string; title: string; artist: string; duration: number; albumArt?: string };
+    }
+  | { type: "lyricbomb:randomSong" }
+  | { type: "lyricbomb:wordTap"; chipId: string }
+  | { type: "lyricbomb:useHint" }
+  | { type: "lyricbomb:resetWords" }
+  | { type: "lyricbomb:reportAudioIssue" }
+  | { type: "lyricbomb:skipSong"; token?: string }
+  | { type: "lyricbomb:rematch"; token?: string }
+  | { type: "lyricbomb:close"; token?: string }
   | { type: "ping" };
 
 export type ServerMessage =
@@ -211,4 +234,15 @@ export type ServerMessage =
   | { type: "trivia:gameOver"; podium: import("./trivia/types.ts").TriviaPodiumEntry[] }
   | { type: "trivia:presetsUpdated"; presets: import("./trivia/types.ts").TriviaPresetItem[] }
   | { type: "trivia:closed" }
+  // Lyric Bomb Broadcasts
+  | { type: "lyricbomb:stateSync"; state: import("./lyricbomb/types.ts").LyricBombState }
+  | { type: "lyricbomb:lobbyCreated"; hostId: string }
+  | {
+      type: "lyricbomb:wordTapWrong";
+      playerId: string;
+      chipId: string;
+      penaltySec: number;
+      timeLeft: number;
+    }
+  | { type: "lyricbomb:closed" }
   | { type: "youtubeAuthStatus"; status: import("./auth/youtubeLogin.ts").YouTubeCookieStatus };

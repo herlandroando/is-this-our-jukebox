@@ -25,6 +25,7 @@ import { useFavorites } from "../shared/useFavorites.ts";
 import { SHOW_OSU_MODE } from "../shared/config.ts";
 import TriviaHostSetupModal from "../components/trivia/TriviaHostSetupModal.vue";
 import TriviaModal from "../components/trivia/TriviaModal.vue";
+import LyricBombModal from "../components/lyricbomb/LyricBombModal.vue";
 import PersonaGameHubModal from "../components/persona/PersonaGameHubModal.vue";
 import type { MemberRole, TriviaGameSettings } from "../shared/types.ts";
 
@@ -71,11 +72,33 @@ const isLeaderboardModalOpen = ref(false);
 const isTriviaHostSetupOpen = ref(false);
 const isTriviaModalOpen = ref(false);
 const isTriviaCreating = ref(false);
+const isLyricBombModalOpen = ref(false);
 const isGameHubOpen = ref(false);
 const isYouTubeAuthModalOpen = ref(false);
 
 const youtubeAuthStatus = computed(() => jukeboxClient.youtubeAuthStatus.value);
 const triviaState = computed(() => jukeboxClient.triviaState.value);
+const lbState = computed(() => jukeboxClient.lyricBombState.value);
+
+watch(
+  () => jukeboxClient.lyricBombState.value,
+  (lbs) => {
+    if (lbs && lbs.status !== "idle") {
+      isLyricBombModalOpen.value = true;
+    } else if (!lbs || lbs.status === "idle") {
+      isLyricBombModalOpen.value = false;
+    }
+  }
+);
+
+function onOpenLyricBombHost() {
+  if (lbState.value && lbState.value.status !== "idle") {
+    isLyricBombModalOpen.value = true;
+  } else {
+    jukeboxClient.createLyricBomb();
+    isLyricBombModalOpen.value = true;
+  }
+}
 
 watch(triviaState, (ts) => {
   if (ts && ts.status !== "idle") {
@@ -419,7 +442,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
     <AudioEngine
       v-if="outputMode === 'browser'"
       :track="nowPlaying"
-      :isPlaying="isPlaying"
+      :isPlaying="isPlaying && !isLyricBombModalOpen"
       :volume="volume"
       :karaokeEnabled="karaokeEnabled"
       :karaokeLevel="karaokeLevel"
@@ -1051,8 +1074,15 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
       :showOsuMode="SHOW_OSU_MODE"
       @close="isGameHubOpen = false"
       @openTrivia="onOpenTriviaHost"
+      @openLyricBomb="onOpenLyricBombHost"
       @openRhythm="() => {}"
       @openLeaderboard="isLeaderboardModalOpen = true"
+    />
+
+    <!-- Lyric Bomb Game Modal -->
+    <LyricBombModal
+      :isOpen="isLyricBombModalOpen"
+      @close="isLyricBombModalOpen = false"
     />
 
     <!-- Trivia Host Setup Modal -->

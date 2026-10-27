@@ -16,6 +16,7 @@ const emit = defineEmits<{
   (e: "openTrivia"): void;
   (e: "openRhythm"): void;
   (e: "openLeaderboard"): void;
+  (e: "openLyricBomb"): void;
 }>();
 
 function handleKeydown(e: KeyboardEvent) {
@@ -109,6 +110,7 @@ const triviaPlayerCount = computed(() => {
             @openTrivia="emit('openTrivia'); emit('close')"
             @openRhythm="emit('openRhythm'); emit('close')"
             @openLeaderboard="emit('openLeaderboard'); emit('close')"
+            @openLyricBomb="emit('openLyricBomb'); emit('close')"
           />
         </div>
       </div>

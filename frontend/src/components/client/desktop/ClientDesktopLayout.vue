@@ -68,6 +68,7 @@ const emit = defineEmits<{
   (e: "openRhythmModal"): void;
   (e: "openLeaderboardModal"): void;
   (e: "openTriviaModal"): void;
+  (e: "openLyricBombModal"): void;
   (e: "openGameHub"): void;
 }>();
 
@@ -410,6 +411,7 @@ const quickPickVibes = [
               :triviaState="triviaState"
               :showOsuMode="showOsuMode ?? true"
               @openTrivia="emit('openTriviaModal')"
+              @openLyricBomb="emit('openLyricBombModal')"
               @openRhythm="emit('openRhythmModal')"
               @openLeaderboard="emit('openLeaderboardModal')"
             />

@@ -52,6 +52,8 @@
   - **Members**: Office listeners requesting, upvoting, and enjoying the music.
 
 ### 🎮 Office Arcade (Party Games)
+- 💣 **Lyric Bomb / Bom Waktu Lirik (Hot Potato Multiplayer)**:
+  Game pesta eliminasi nyawa & bom waktu interaktif. Pemain bergiliran menyusun potongan kata lirik lagu yang sedang diputar ketika musik tiba-tiba berhenti. Pemegang bom harus menekan urutan kata yang tepat sebelum bom meledak di tangannya! Jika berhasil, musik lanjut mengalun dan bom terlempar ke pemain berikutnya dengan durasi yang kian memendek setiap rondenya. Jika lagu berhasil diselesaikan bersama hingga akhir, semua pemain yang masih hidup berhak mendapatkan +1 bonus nyawa (HP). Dilengkapi sistem *pre-validation* YouTube Music yang otomatis mendeteksi ketersediaan lirik bersinkronisasi waktu (*synced lyrics*).
 - 🎵 **Tebak Lagu / Trivia Song-Guess Multiplayer**:
   Host-gated party game. The Host picks a curated genre preset (Pop Indo, Indie Indo, Rock Indo, …) or pastes a YouTube Music playlist URL (validated live via `POST /api/trivia/preview-playlist`), chooses rounds (5/10/15) and snippet length (10/20/30s), then starts. Players get a lobby invite, toggle ready, guess from 4 multiple-choice `Judul – Artis` options while a 20–30s snippet streams via `/api/stream/:id`. Fastest-correct answers earn speed-bonus points, with per-round recaps and a Top-3 podium. Room music auto-pauses and resumes afterwards. Sources include current queue vibes, office history, genre presets, and custom playlists (SQLite-cached, 12h TTL).
 - 🎹 **osu!mania 4-Key Rhythm Game** *(currently hidden — in polish)*:

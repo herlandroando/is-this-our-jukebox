@@ -126,6 +126,28 @@ export type ClientMessage =
   | { type: "trivia:reportAudioIssue" }
   | { type: "trivia:skipQuestion"; token?: string }
   | { type: "trivia:close"; token?: string }
+  // Lyric Bomb Game
+  | { type: "lyricbomb:create"; token?: string }
+  | { type: "lyricbomb:join" }
+  | { type: "lyricbomb:leave" }
+  | { type: "lyricbomb:ready"; isReady: boolean }
+  | { type: "lyricbomb:setHostPlaying"; isPlaying: boolean; token?: string }
+  | { type: "lyricbomb:setStartingDuration"; durationSec: number; token?: string }
+  | { type: "lyricbomb:setAudioMode"; mode: "host" | "self" }
+  | { type: "lyricbomb:audioReady"; segmentIndex: number }
+  | { type: "lyricbomb:start"; token?: string }
+  | {
+      type: "lyricbomb:selectSong";
+      song: { videoId: string; title: string; artist: string; duration: number; albumArt?: string };
+    }
+  | { type: "lyricbomb:randomSong" }
+  | { type: "lyricbomb:wordTap"; chipId: string }
+  | { type: "lyricbomb:useHint" }
+  | { type: "lyricbomb:resetWords" }
+  | { type: "lyricbomb:reportAudioIssue" }
+  | { type: "lyricbomb:skipSong"; token?: string }
+  | { type: "lyricbomb:rematch"; token?: string }
+  | { type: "lyricbomb:close"; token?: string }
   | { type: "ping" };
 
 export interface ReactionBroadcastItem {
@@ -185,8 +207,143 @@ export type ServerMessage =
   | { type: "trivia:gameOver"; podium: TriviaPodiumEntry[] }
   | { type: "trivia:closed" }
   | { type: "trivia:presetsUpdated"; presets: TriviaPresetItem[] }
+  // Lyric Bomb Broadcasts
+  | { type: "lyricbomb:stateSync"; state: LyricBombState }
+  | { type: "lyricbomb:lobbyCreated"; hostId: string }
+  | {
+      type: "lyricbomb:wordTapWrong";
+      playerId: string;
+      chipId: string;
+      penaltySec: number;
+      timeLeft: number;
+    }
+  | { type: "lyricbomb:closed" }
   | { type: "pong" }
   | { type: "youtubeAuthStatus"; status: YouTubeCookieStatus };
+
+// --- Lyric Bomb Types ---
+export type LyricBombGameStatus =
+  | "idle"
+  | "lobby"
+  | "picking_song"
+  | "song_loading"
+  | "playing"
+  | "defusing"
+  | "line_success"
+  | "exploded"
+  | "song_survived"
+  | "game_over";
+
+export interface LyricBombPlayer {
+  id: string;
+  nickname: string;
+  avatarSeed?: string;
+  isHost: boolean;
+  isReady: boolean;
+  hp: number;
+  isEliminated: boolean;
+  isOnline?: boolean;
+  defusalCount: number;
+  explosionsTaken: number;
+  score: number;
+  streak: number;
+  maxStreak: number;
+  hintsUsed: number;
+  wrongTaps: number;
+  audioOutputMode?: "host" | "self";
+}
+
+export interface LyricBombWordChip {
+  id: string;
+  text: string;
+  originalIndex: number;
+}
+
+export interface LyricBombLeadInLine {
+  time: number;
+  text: string;
+  romaji?: string;
+  translation?: string;
+}
+
+export interface LyricBombSegment {
+  segmentIndex: number;
+  leadInStartTime: number;
+  stopTime: number;
+  resumeStartTime: number;
+  resumeEndTime: number;
+  leadInTexts: string[];
+  leadInLines: LyricBombLeadInLine[];
+  targetOriginalText: string;
+  targetDisplayScript?: string;
+  targetTranslation?: string;
+  words: string[];
+  scrambledChips: LyricBombWordChip[];
+}
+
+export interface LyricBombSongInfo {
+  videoId: string;
+  title: string;
+  artist: string;
+  albumArt?: string;
+  duration: number;
+  segments: LyricBombSegment[];
+}
+
+export interface LyricBombPodiumEntry {
+  rank: number;
+  id: string;
+  nickname: string;
+  score: number;
+  hp: number;
+  isEliminated: boolean;
+  defusalCount: number;
+  maxStreak: number;
+  explosionsTaken: number;
+}
+
+export interface LyricBombWrongTapEvent {
+  playerId: string;
+  chipId: string;
+  penaltySec: number;
+  timestamp: number;
+}
+
+export interface LyricBombState {
+  status: LyricBombGameStatus;
+  hostClientId: string | null;
+  isHostPlaying: boolean;
+  roundNumber: number;
+  startingBombDuration: number;
+  turnBombDuration: number;
+  currentBombTimeLeft: number;
+  pickerTimeLeft: number | null;
+  players: Record<string, LyricBombPlayer>;
+  playerTurnOrder: string[];
+  activePlayerId: string | null;
+  pickerPlayerId: string | null;
+  currentSong: LyricBombSongInfo | null;
+  currentSegmentIndex: number;
+  selectedWordIds: string[];
+  lastExplodedPlayerId: string | null;
+  lastWrongTap: LyricBombWrongTapEvent | null;
+  lastPointsEarned?: number;
+  lastLifeGained?: boolean;
+  winnerPlayerId: string | null;
+  podium?: LyricBombPodiumEntry[];
+  isAudioReady?: boolean;
+  audioIssueReports?: Array<{ playerId: string; nickname: string; timestamp: number }>;
+}
+
+export interface VerifiedLyricBombSong {
+  id: string;
+  videoId: string;
+  title: string;
+  artist: string;
+  category: string;
+  duration: number;
+  lineCount: number;
+}
 
 export interface YouTubeCookieStatus {
   hasCookies: boolean;

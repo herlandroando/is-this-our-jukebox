@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { TriviaGameState } from "../../shared/types.ts";
+import { jukeboxClient } from "../../shared/ws.ts";
 import UiIcon from "../UiIcon.vue";
 
 const props = withDefaults(
@@ -20,6 +21,7 @@ const emit = defineEmits<{
   (e: "openTrivia"): void;
   (e: "openRhythm"): void;
   (e: "openLeaderboard"): void;
+  (e: "openLyricBomb"): void;
 }>();
 
 const isTriviaActive = computed(() => {
@@ -29,6 +31,16 @@ const isTriviaActive = computed(() => {
 const triviaPlayerCount = computed(() => {
   if (!props.triviaState?.players) return 0;
   return Object.keys(props.triviaState.players).length;
+});
+
+const lbState = computed(() => jukeboxClient.lyricBombState.value);
+const isLyricBombActive = computed(() => {
+  return lbState.value && lbState.value.status !== "idle";
+});
+
+const lbPlayerCount = computed(() => {
+  if (!lbState.value?.players) return 0;
+  return Object.keys(lbState.value.players).length;
 });
 </script>
 
@@ -171,46 +183,62 @@ const triviaPlayerCount = computed(() => {
         </div>
       </div>
 
-      <!-- 3. UPCOMING GAME SLOT (FUTURE EXPANSION) -->
+      <!-- 3. FEATURED GAME: LYRIC BOMB (BOM LIRIK WAKTU) -->
       <div
-        class="relative bg-[#0d0d18] border-2 border-dashed border-white/30 p-4 sm:p-5 flex flex-col justify-between gap-4 opacity-85 hover:opacity-100 transition-all shadow-[6px_6px_0px_#000]"
+        class="relative bg-[#141424] border-2 border-white p-4 sm:p-5 flex flex-col justify-between gap-4 transition-all hover:border-[#e60012] group shadow-[6px_6px_0px_#000]"
         style="transform: skewX(-2deg);"
       >
         <!-- Card Badge -->
         <div class="flex items-center justify-between gap-2">
-          <span class="px-2.5 py-0.5 bg-white/10 text-slate-300 font-mono font-black text-[10px] uppercase tracking-wider border border-white/20">
-            SLOT GAME BARU
+          <span class="px-2.5 py-0.5 bg-[#e60012] text-white font-black text-[10px] uppercase tracking-wider border border-white">
+            💣 MULTIPLAYER // TIME BOMB
           </span>
-          <span class="text-[10px] font-mono text-purple-400 uppercase tracking-wider">
-            [COMING SOON]
+
+          <span
+            v-if="isLyricBombActive"
+            class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center gap-1"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <span>{{ lbState?.status === 'lobby' ? 'LOBBY BUKA' : 'BOM BERDETAK' }} ({{ lbPlayerCount }} P)</span>
+          </span>
+          <span
+            v-else
+            class="text-[10px] font-mono text-slate-400 uppercase tracking-wider"
+          >
+            [SIAP DIMAINKAN]
           </span>
         </div>
 
         <!-- Content -->
         <div class="flex flex-col gap-1.5">
           <div class="flex items-center gap-2">
-            <div class="w-9 h-9 rounded-lg bg-white/10 text-white flex items-center justify-center font-black border border-white/20">
-              🎲
+            <div class="w-9 h-9 rounded-lg bg-[#e60012] text-white flex items-center justify-center font-black border border-white shadow-sm text-base">
+              💣
             </div>
             <div>
-              <h3 class="text-base font-black italic uppercase text-slate-300 tracking-wide">
-                Next Minigame
+              <h3 class="text-base font-black italic uppercase text-white tracking-wide group-hover:text-pink-400 transition-colors">
+                Lyric Bomb (Bom Lirik)
               </h3>
-              <span class="text-[10px] font-mono text-slate-500 tracking-wider">SYSTEM EXPANSION READY</span>
+              <span class="text-[10px] font-mono text-cyan-400 tracking-wider">ARRANGE LYRICS BEFORE IT BLOWS</span>
             </div>
           </div>
 
-          <p class="text-xs text-slate-400 leading-relaxed mt-1">
-            Katalog Game disiapkan untuk menyatukan game baru kantor berikutnya (Tebak Artis, Karaoke Battle, Wheel of Fortune, dll).
+          <p class="text-xs text-slate-300 leading-relaxed mt-1">
+            Musik stop mendadak! Susun kata lirik berikutnya sebelum bom meledak di tanganmu. Selesaikan lagu barengan untuk +1 nyawa!
           </p>
         </div>
 
-        <!-- Disabled Button -->
-        <div
-          class="w-full h-11 bg-white/5 border-2 border-white/20 text-slate-500 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-not-allowed"
-          style="transform: skewX(-8deg);"
-        >
-          <span>🔒 SEGERA HADIR</span>
+        <!-- Action Button -->
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="flex-1 h-11 bg-[#e60012] hover:bg-rose-500 text-white border-2 border-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shadow-[4px_4px_0px_#000]"
+            style="transform: skewX(-8deg);"
+            @click="emit('openLyricBomb')"
+          >
+            <span class="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px] font-black">X</span>
+            <span>{{ isLyricBombActive ? 'GABUNG BOM' : (isDjOrHost ? 'BUKA LOBBY BOM' : 'LIHAT ROOM') }}</span>
+          </button>
         </div>
       </div>
     </div>

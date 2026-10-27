@@ -9,6 +9,8 @@ import LeaderboardModal from "../components/rhythm/LeaderboardModal.vue";
 import TriviaHostSetupModal from "../components/trivia/TriviaHostSetupModal.vue";
 import TriviaModal from "../components/trivia/TriviaModal.vue";
 import TriviaInvitationBanner from "../components/trivia/TriviaInvitationBanner.vue";
+import LyricBombModal from "../components/lyricbomb/LyricBombModal.vue";
+import LyricBombInvitationBanner from "../components/lyricbomb/LyricBombInvitationBanner.vue";
 import PersonaGameHubModal from "../components/persona/PersonaGameHubModal.vue";
 import { SHOW_OSU_MODE } from "../shared/config.ts";
 import { usePlaybackProgress } from "../shared/usePlaybackProgress.ts";
@@ -27,10 +29,34 @@ const isLeaderboardModalOpen = ref(false);
 const isTriviaHostSetupOpen = ref(false);
 const isTriviaModalOpen = ref(false);
 const isTriviaCreating = ref(false);
+const isLyricBombModalOpen = ref(false);
 const isGameHubOpen = ref(false);
 const prefillSearchQuery = ref("");
 
 const triviaState = computed(() => jukeboxClient.triviaState.value);
+const lbState = computed(() => jukeboxClient.lyricBombState.value);
+
+watch(lbState, (lbs) => {
+  if (lbs && lbs.status !== "idle" && currentClientId.value && lbs.players[currentClientId.value]) {
+    isLyricBombModalOpen.value = true;
+  } else if (!lbs || lbs.status === "idle") {
+    isLyricBombModalOpen.value = false;
+  }
+});
+
+function onOpenLyricBombModal() {
+  if (lbState.value && lbState.value.status !== "idle") {
+    if (lbState.value.status === "lobby" && currentClientId.value && !lbState.value.players[currentClientId.value]) {
+      jukeboxClient.joinLyricBomb();
+    }
+    isLyricBombModalOpen.value = true;
+  } else if (isDjOrHost.value) {
+    jukeboxClient.createLyricBomb();
+    isLyricBombModalOpen.value = true;
+  } else {
+    jukeboxClient.addToast("Belum ada game Lyric Bomb yang dibuka oleh Host/DJ 💣", "info");
+  }
+}
 
 watch(triviaState, (ts) => {
   if (ts && ts.status !== "idle" && currentClientId.value && ts.players[currentClientId.value]) {
@@ -305,6 +331,7 @@ function onClaimRole(passcode: string) {
         @openRhythmModal="isRhythmModalOpen = true"
         @openLeaderboardModal="isLeaderboardModalOpen = true"
         @openTriviaModal="onOpenTriviaModal"
+        @openLyricBombModal="onOpenLyricBombModal"
         @openGameHub="isGameHubOpen = true"
       />
     </div>
@@ -358,6 +385,7 @@ function onClaimRole(passcode: string) {
         @openRhythmModal="isRhythmModalOpen = true"
         @openLeaderboardModal="isLeaderboardModalOpen = true"
         @openTriviaModal="onOpenTriviaModal"
+        @openLyricBombModal="onOpenLyricBombModal"
         @openGameHub="isGameHubOpen = true"
       />
     </div>
@@ -370,12 +398,16 @@ function onClaimRole(passcode: string) {
       :showOsuMode="SHOW_OSU_MODE"
       @close="isGameHubOpen = false"
       @openTrivia="onOpenTriviaModal"
+      @openLyricBomb="onOpenLyricBombModal"
       @openRhythm="isRhythmModalOpen = true"
       @openLeaderboard="isLeaderboardModalOpen = true"
     />
 
     <!-- Floating Trivia Invitation Banner -->
     <TriviaInvitationBanner @join="onOpenTriviaModal" />
+
+    <!-- Floating Lyric Bomb Invitation Banner -->
+    <LyricBombInvitationBanner @join="onOpenLyricBombModal" />
 
     <!-- Trivia Host Setup Modal -->
     <TriviaHostSetupModal
@@ -388,6 +420,12 @@ function onClaimRole(passcode: string) {
     <TriviaModal
       :isOpen="isTriviaModalOpen"
       @close="isTriviaModalOpen = false"
+    />
+
+    <!-- Lyric Bomb Main Game Modal -->
+    <LyricBombModal
+      :isOpen="isLyricBombModalOpen"
+      @close="isLyricBombModalOpen = false"
     />
 
     <!-- Full-Screen Loading Overlay saat Menyiapkan Room Tebak Lagu -->

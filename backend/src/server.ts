@@ -19,6 +19,9 @@ import { jukeboxDb } from "./db.ts";
 import { generateBeatmap } from "./rhythm/beatDetector.ts";
 import { triviaGameManager } from "./trivia/gameManager.ts";
 import { previewPlaylist } from "./trivia/playlistService.ts";
+import { lyricBombGameManager } from "./lyricbomb/gameManager.ts";
+import { getVerifiedLyricBombPresets } from "./lyricbomb/songCatalog.ts";
+import { prepareLyricBombSong } from "./lyricbomb/songValidator.ts";
 import type { AudioProvider, SearchFilterProvider } from "./types.ts";
 import type { RhythmScoreSubmission } from "./rhythm/types.ts";
 import {
@@ -113,6 +116,47 @@ app.post("/api/trivia/preview-playlist", async (c) => {
     return c.json(res);
   } catch (err) {
     return c.json({ valid: false, count: 0, sampleTracks: [] });
+  }
+});
+
+// --- Lyric Bomb Game API ---
+app.get("/api/lyricbomb/office-playlist", (c) => {
+  return c.json(lyricBombGameManager.getOfficePlaylist());
+});
+
+app.get("/api/lyricbomb/presets", (c) => {
+  const officeSongs = lyricBombGameManager.getOfficePlaylist();
+  if (officeSongs.length > 0) {
+    return c.json(officeSongs);
+  }
+  return c.json(getVerifiedLyricBombPresets());
+});
+
+app.get("/api/lyricbomb/search", async (c) => {
+  const q = c.req.query("q") || "";
+  if (!q.trim() || c.req.raw.signal?.aborted) {
+    return c.json([]);
+  }
+  const rawResults = await searchTracks(q, "yt_music", c.req.raw.signal);
+  return c.json(rawResults.slice(0, 10));
+});
+
+app.post("/api/lyricbomb/validate", async (c) => {
+  try {
+    const body = (await c.req.json()) as any;
+    if (!body || !body.videoId || !body.title) {
+      return c.json({ valid: false, reason: "Data lagu tidak lengkap" }, 400);
+    }
+    const result = await prepareLyricBombSong({
+      videoId: body.videoId,
+      title: body.title,
+      artist: body.artist || "Unknown Artist",
+      duration: body.duration || 180,
+      albumArt: body.albumArt,
+    });
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ valid: false, reason: err?.message || "Gagal memvalidasi lagu" }, 500);
   }
 });
 
