@@ -69,11 +69,11 @@ async function main() {
   const entries: string[] = [];
 
   for (const rel of files) {
-    const abs = join(DIST, rel).split(sep).join("/");
+    const abs = join(DIST, rel);
     const webPath = webPathOf(rel);
-    const importSpec = relative(OUT_DIR, abs).split(sep).join("/");
+    let importSpec = relative(OUT_DIR, abs).split(sep).join("/");
     if (!importSpec.startsWith(".")) {
-      throw new Error(`bad import spec: ${importSpec}`);
+      importSpec = "./" + importSpec;
     }
     const name = toImportName(webPath);
     if (seen.has(name)) throw new Error(`name collision: ${name} for ${webPath}`);

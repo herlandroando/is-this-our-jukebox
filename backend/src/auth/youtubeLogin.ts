@@ -2,19 +2,101 @@ import { spawn } from "bun";
 import { existsSync, unlinkSync, statSync, rmSync } from "fs";
 import { join } from "path";
 
-const CANDIDATE_BROWSERS = [
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-];
-
 function findBrowserBinary(): string | null {
-  for (const b of CANDIDATE_BROWSERS) {
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+
+  if (isWin) {
+    const winCandidates = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+      "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+      join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
+      join(process.env.LOCALAPPDATA || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+      join(process.env.LOCALAPPDATA || "", "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+    ];
+    for (const b of winCandidates) {
+      if (b && existsSync(b)) return b;
+    }
+  } else if (isMac) {
+    const home = process.env.HOME || "";
+    const macCandidates = [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Arc.app/Contents/MacOS/Arc",
+      join(home, "Applications", "Google Chrome.app", "Contents", "MacOS", "Google Chrome"),
+      join(home, "Applications", "Brave Browser.app", "Contents", "MacOS", "Brave Browser"),
+      join(home, "Applications", "Microsoft Edge.app", "Contents", "MacOS", "Microsoft Edge"),
+    ];
+    for (const b of macCandidates) {
+      if (b && existsSync(b)) return b;
+    }
+  }
+
+  // Common Linux executables & PATH-based lookup (all Unix & PATH-aware systems)
+  const pathCandidates = [
+    "google-chrome",
+    "google-chrome-stable",
+    "chromium",
+    "chromium-browser",
+    "brave-browser",
+    "brave",
+    "microsoft-edge-stable",
+    "microsoft-edge",
+    "chrome",
+  ];
+  for (const name of pathCandidates) {
+    const resolved = Bun.which(name);
+    if (resolved && existsSync(resolved)) return resolved;
+  }
+
+  // Linux standard filesystem fallback
+  const linuxPaths = [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/brave-browser",
+    "/usr/bin/microsoft-edge-stable",
+    "/snap/bin/chromium",
+    "/snap/bin/brave",
+  ];
+  for (const b of linuxPaths) {
     if (existsSync(b)) return b;
   }
+
   return null;
+}
+
+function killProcessTree(proc: ReturnType<typeof spawn> | null) {
+  if (!proc) return;
+  const pid = proc.pid;
+  if (!pid) {
+    try {
+      proc.kill();
+    } catch {}
+    return;
+  }
+  if (process.platform === "win32") {
+    try {
+      spawn(["taskkill", "/pid", String(pid), "/T", "/F"], {
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } catch {}
+  } else {
+    try {
+      spawn(["kill", "-9", String(pid)], {
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    } catch {}
+  }
+  try {
+    proc.kill();
+  } catch {}
 }
 
 export function getCookiesFilePath(): string {
@@ -51,15 +133,7 @@ export function deleteLoginProfile(): boolean {
     } catch (err) {
       console.warn(`[auth-yt] Attempt ${attempt} to delete profile directory failed:`, err);
       if (activeLoginProcess) {
-        try {
-          const pid = activeLoginProcess.pid;
-          if (process.platform === "win32" && pid) {
-            spawn(["taskkill", "/pid", String(pid), "/T", "/F"], {
-              stdio: ["ignore", "ignore", "ignore"],
-            });
-          }
-          activeLoginProcess.kill();
-        } catch {}
+        killProcessTree(activeLoginProcess);
         activeLoginProcess = null;
       }
       const start = Date.now();
@@ -214,17 +288,7 @@ export function cancelYouTubeLogin() {
     activeCdpWs = null;
   }
   if (activeLoginProcess) {
-    try {
-      const pid = activeLoginProcess.pid;
-      if (process.platform === "win32" && pid) {
-        try {
-          spawn(["taskkill", "/pid", String(pid), "/T", "/F"], {
-            stdio: ["ignore", "ignore", "ignore"],
-          });
-        } catch {}
-      }
-      activeLoginProcess.kill();
-    } catch {}
+    killProcessTree(activeLoginProcess);
     activeLoginProcess = null;
   }
   lastStatusMessage = "Sesi login dibatalkan.";
@@ -241,7 +305,7 @@ export async function startYouTubeLogin(): Promise<{ success: boolean; message: 
   if (!browserBin) {
     return {
       success: false,
-      message: "Browser Chrome atau Edge tidak ditemukan di sistem Windows ini.",
+      message: "Browser Chrome, Chromium, Edge, atau Brave tidak ditemukan di sistem ini. Silakan instal browser terlebih dahulu.",
     };
   }
 

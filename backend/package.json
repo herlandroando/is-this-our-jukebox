@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bun --watch ./src/server.ts",
     "compile:embed": "bun build --target=bun --outdir=./dist ./src/server.ts",
-    "compile:package": "bun build --compile --minify --outfile=../jukebox-office.exe ./src/server.ts",
+    "compile:package": "bun ../scripts/package.ts",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },

@@ -67,7 +67,7 @@
 - 🎉 **Per-Emoji Reaction Combos + Synth Sound**:
   Each emoji has its own independent combo counter with adaptive decay (1.8s → 3.0s) and milestone (`every 5 past 10`) / climax (`100+` + 3s lockout) broadcasts. Pentatonic pitch rises with combo, with distinct per-emoji timbre. 60-char shoutouts with 2.5s rate-limit.
 - 📦 **100% Standalone Single Binary**:
-  Frontend, backend, SQLite history, and embedded assets are bundled into a single ~87 MB executable (`jukebox-office.exe`). Zero external dependencies required.
+  Frontend, backend, SQLite history, and embedded assets are bundled into a single ~87 MB executable (`jukebox-office.exe` on Windows, `jukebox-office` on macOS & Linux). Zero external dependencies required.
 
 ---
 
@@ -166,14 +166,28 @@ bun run smoke:ws
 # categories / presets / preview / create / join / answer)
 bun run smoke:trivia
 
-# Build and package single standalone Windows binary
+# Build and package standalone binary for your current OS
 bun run package
-# -> Outputs ./jukebox-office.exe (~87 MB)
+# -> Windows: ./jukebox-office.exe
+# -> macOS / Linux: ./jukebox-office
+
+# Cross-compile standalone binaries for all platforms
+bun run package:all
+# -> ./jukebox-office-windows-x64.exe
+# -> ./jukebox-office-darwin-arm64 (macOS Apple Silicon)
+# -> ./jukebox-office-darwin-x64 (macOS Intel)
+# -> ./jukebox-office-linux-x64
+# -> ./jukebox-office-linux-arm64
 ```
 
 | Script | What it does |
 |---|---|
 | `bun run dev` | Builds frontend + manifest, then runs backend + frontend concurrently |
+| `bun run package` | Builds standalone binary for current host OS (macOS, Linux, or Windows) |
+| `bun run package:all` | Cross-compiles standalone binaries for Windows, macOS (ARM64/x64), and Linux (x64/ARM64) |
+| `bun run package:mac` | Cross-compiles standalone binary for macOS Apple Silicon |
+| `bun run package:linux` | Cross-compiles standalone binary for Linux x64 |
+| `bun run package:windows` | Cross-compiles standalone binary for Windows x64 |
 | `bun run typecheck` | `tsc` (backend) + `vue-tsc` (frontend) |
 | `bun run smoke:ws` | WebSocket + streaming smoke test (per-emoji isolation) |
 | `bun run smoke:trivia` | Trivia categories/presets/preview/game-flow smoke test |
@@ -229,7 +243,8 @@ Generate an instant, temporary public URL without needing a Cloudflare account o
 bun run tunnel:quick
 
 # Or for standalone binary users:
-# Double-click start-with-quick-tunnel.bat
+# Windows: Double-click start-with-quick-tunnel.bat
+# macOS / Linux: ./start-with-quick-tunnel.sh
 ```
 
 ### 2. Named Tunnel with Custom Domain (Production Office Setup)
@@ -240,7 +255,7 @@ Route a permanent branded hostname (e.g. `https://jukebox.yourdomain.com`) direc
    PUBLIC_URL=https://jukebox.yourdomain.com
    ```
 2. In the [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/), create a tunnel named `office-jukebox` and map your public hostname to `http://localhost:3000`.
-3. Start the jukebox with `bun run dev`, `bun run tunnel:named`, or `start-with-named-tunnel.bat`.
+3. Start the jukebox with `bun run dev`, `bun run tunnel:named`, `start-with-named-tunnel.bat` (Windows), or `./start-with-named-tunnel.sh` (macOS/Linux).
 
 ### 🛡️ Bandwidth Saver Mode (Host Upload Protection)
 - **Controller Traffic**: Song searches, queuing, upvoting, live lyrics, and reactions use **< 10 MB / hour** total across all users (<0.1% upload).

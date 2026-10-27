@@ -3,8 +3,12 @@ dist
 .env
 .env.local
 *.exe
+jukebox-office
+jukebox-office-*
 bun.lock
 bun.lockb
+.bun-cache/
+.bun/
 dev.log
 .DS_Store
 Thumbs.db

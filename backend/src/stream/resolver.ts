@@ -57,6 +57,7 @@ function getSoundCloud(): Soundcloud {
 
 const CANDIDATE_PREFIXES: string[][] = [
   ["yt-dlp"],
+  ["python3", "-m", "yt_dlp"],
   ["python", "-m", "yt_dlp"],
   ["py", "-3", "-m", "yt_dlp"],
 ];

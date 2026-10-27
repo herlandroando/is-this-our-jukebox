@@ -34,9 +34,11 @@ async function checkCloudflared(): Promise<string> {
   console.error("\n=======================================================");
   console.error(" ⚠️  cloudflared executable not found in PATH!");
   console.error("=======================================================");
-  console.error(" To install Cloudflare Tunnel on Windows, run:");
-  console.error("   winget install --id Cloudflare.cloudflared -e");
-  console.error("\n After installation, reopen your terminal and run this again.");
+  console.error(" To install Cloudflare Tunnel:");
+  console.error("   • Windows:  winget install --id Cloudflare.cloudflared -e");
+  console.error("   • macOS:    brew install cloudflared");
+  console.error("   • Linux:    sudo apt install cloudflared (or see pkg.cloudflare.com)");
+  console.error("\n After installation, reopen your terminal and run this command again.");
   console.error("=======================================================\n");
   process.exit(1);
 }
