@@ -37,6 +37,7 @@ function getComboDecayWindow(combo: number): number {
 
 export class JukeboxWsHub {
   private sockets = new Set<ServerWebSocket<WsUserData>>();
+  private clientSockets = new Map<string, ServerWebSocket<WsUserData>>();
   private lastShoutoutTimes = new Map<string, number>();
   private emojiCombos = new Map<string, EmojiComboState>();
 
@@ -112,7 +113,23 @@ export class JukeboxWsHub {
   }
 
   public handleOpen(ws: ServerWebSocket<WsUserData>) {
-    // 1. Send welcome message to newly connected client first
+    const clientId = ws.data.id;
+
+    // 1. If an existing socket already exists for this client (e.g. reconnect or page refresh),
+    // close the older socket cleanly and replace it
+    const existingWs = this.clientSockets.get(clientId);
+    if (existingWs && existingWs !== ws) {
+      this.sockets.delete(existingWs);
+      try {
+        existingWs.close(4001, "Replaced by new connection");
+      } catch {}
+    }
+
+    // 2. Register socket to active maps
+    this.clientSockets.set(clientId, ws);
+    this.sockets.add(ws);
+
+    // 3. Send welcome message to newly connected client first
     const welcome: ServerMessage = {
       type: "welcome",
       isAdmin: ws.data.isAdmin,
@@ -121,11 +138,7 @@ export class JukeboxWsHub {
     };
     ws.send(JSON.stringify(welcome));
 
-    // 2. Add socket to active hub
-    this.sockets.add(ws);
-
-    // 3. Batch member addition & active listener count into store,
-    // which triggers exactly one stateSync broadcast to all connected clients (including this one)
+    // 4. Batch member addition & accurate unique client listener count into store
     queueStore.setMember(
       {
         clientId: ws.data.id,
@@ -135,10 +148,10 @@ export class JukeboxWsHub {
         connectedAt: ws.data.connectedAt || Date.now(),
         isHost: ws.data.isAdmin,
       },
-      this.sockets.size
+      this.clientSockets.size
     );
 
-    // 4. Send current Trivia Game state if a game is active
+    // 5. Send current Trivia Game state if a game is active
     const triviaState = triviaGameManager.getState();
     if (triviaState.status !== "idle") {
       ws.send(
@@ -151,10 +164,19 @@ export class JukeboxWsHub {
   }
 
   public handleClose(ws: ServerWebSocket<WsUserData>) {
+    const clientId = ws.data.id;
     this.sockets.delete(ws);
-    this.lastShoutoutTimes.delete(ws.data.id);
-    triviaGameManager.leaveLobby(ws.data.id, false);
-    queueStore.removeMember(ws.data.id, this.sockets.size);
+
+    // If this closing socket is still the active socket registered for this client,
+    // perform full cleanup. If it was already superseded by a new connection, skip removal.
+    if (this.clientSockets.get(clientId) === ws) {
+      this.clientSockets.delete(clientId);
+      this.lastShoutoutTimes.delete(clientId);
+      triviaGameManager.leaveLobby(clientId, false);
+      queueStore.removeMember(clientId, this.clientSockets.size);
+    } else {
+      queueStore.setActiveListeners(this.clientSockets.size);
+    }
   }
 
   public async handleMessage(ws: ServerWebSocket<WsUserData>, message: string | Buffer) {
@@ -168,7 +190,23 @@ export class JukeboxWsHub {
     const { id: clientId } = ws.data;
 
     switch (msg.type) {
+      case "ping": {
+        try {
+          ws.send(JSON.stringify({ type: "pong" }));
+        } catch {}
+        break;
+      }
+
       case "hello": {
+        if (msg.clientId && /^[a-zA-Z0-9_-]{4,64}$/.test(msg.clientId) && msg.clientId !== ws.data.id) {
+          const oldId = ws.data.id;
+          if (this.clientSockets.get(oldId) === ws) {
+            this.clientSockets.delete(oldId);
+          }
+          queueStore.removeMember(oldId);
+          ws.data.id = msg.clientId;
+          this.clientSockets.set(msg.clientId, ws);
+        }
         if (msg.nickname) {
           ws.data.nickname = msg.nickname.trim();
         }
@@ -184,13 +222,13 @@ export class JukeboxWsHub {
           role: ws.data.role,
           connectedAt: ws.data.connectedAt,
           isHost: ws.data.isAdmin,
-        });
+        }, this.clientSockets.size);
 
         ws.send(
           JSON.stringify({
             type: "welcome",
             isAdmin: ws.data.isAdmin,
-            clientId,
+            clientId: ws.data.id,
             role: ws.data.role,
           })
         );
@@ -201,6 +239,7 @@ export class JukeboxWsHub {
         const cleanName = msg.nickname?.trim() || "Anonymous";
         ws.data.nickname = cleanName;
         queueStore.updateMemberNickname(clientId, cleanName);
+        triviaGameManager.updatePlayerNickname(clientId, cleanName);
         break;
       }
 

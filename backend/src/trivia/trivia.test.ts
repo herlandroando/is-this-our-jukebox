@@ -48,6 +48,34 @@ describe("Trivia Game Manager & Smart Decoys", () => {
     expect(p.isOnline).toBe(true);
   });
 
+  test("migrates offline player score if client reconnected with new ID but same nickname", () => {
+    const mgr = new TriviaGameManager();
+    (mgr as any).state.status = "question";
+    (mgr as any).state.players["old-socket-id"] = {
+      clientId: "old-socket-id",
+      nickname: "Jancok Haseyo",
+      role: "member",
+      score: 2663,
+      isReady: true,
+      hasAnswered: false,
+      isOnline: false,
+      joinedAt: Date.now() - 60000,
+    };
+
+    // Client reconnects under new socket ID "new-socket-id" with same nickname
+    const res = mgr.joinLobby("new-socket-id", "Jancok Haseyo", "member");
+    expect(res.success).toBe(true);
+
+    const state = mgr.getState();
+    // Old ID removed, new ID has the original 2663 points
+    expect(state.players["old-socket-id"]).toBeUndefined();
+    expect(state.players["new-socket-id"]).toBeDefined();
+    expect(state.players["new-socket-id"].score).toBe(2663);
+    expect(state.players["new-socket-id"].isOnline).toBe(true);
+    // Leaderboard list contains only 1 player, not 2
+    expect(Object.keys(state.players).length).toBe(1);
+  });
+
   test("triggerTimerStart enforces 3-second listening phase and rejects early answer submissions", () => {
     const mgr = new TriviaGameManager();
     (mgr as any).state.status = "question";

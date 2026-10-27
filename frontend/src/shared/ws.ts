@@ -49,17 +49,18 @@ export class JukeboxClient {
     }) => void
   >();
   private triviaClosedListeners = new Set<() => void>();
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    // Generate or restore client ID
-    const storedId = localStorage.getItem("jukebox_client_id");
-    if (storedId) {
-      this.clientId.value = storedId;
-    } else {
-      const newId = "c_" + Math.random().toString(36).slice(2, 10);
-      this.clientId.value = newId;
-      localStorage.setItem("jukebox_client_id", newId);
+    // Generate or restore persistent client ID
+    let storedId = localStorage.getItem("jukebox_client_id");
+    if (!storedId || !storedId.startsWith("c_")) {
+      storedId = "c_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      try {
+        localStorage.setItem("jukebox_client_id", storedId);
+      } catch {}
     }
+    this.clientId.value = storedId;
   }
 
   public setToken(token: string) {
@@ -94,6 +95,11 @@ export class JukeboxClient {
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = new URL(`${protocol}//${window.location.host}/ws`);
+    url.searchParams.set("clientId", this.clientId.value);
+    const storedNickname = localStorage.getItem("jukebox_nickname");
+    if (storedNickname) {
+      url.searchParams.set("nickname", storedNickname);
+    }
     if (this.token) {
       url.searchParams.set("token", this.token);
     }
@@ -108,6 +114,15 @@ export class JukeboxClient {
     this.ws.onopen = () => {
       this.status.value = "connected";
       this.reconnectAttempts = 0;
+
+      // Start keepalive ping every 20 seconds to prevent mobile OS / proxy timeout
+      if (this.pingTimer) clearInterval(this.pingTimer);
+      this.pingTimer = setInterval(() => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.send({ type: "ping" });
+        }
+      }, 20000);
+
       this.send({
         type: "hello",
         token: this.token,
@@ -132,6 +147,10 @@ export class JukeboxClient {
     this.ws.onclose = () => {
       this.status.value = "offline";
       this.ws = null;
+      if (this.pingTimer) {
+        clearInterval(this.pingTimer);
+        this.pingTimer = null;
+      }
       this.scheduleReconnect();
     };
 
@@ -155,7 +174,15 @@ export class JukeboxClient {
       case "welcome":
         this.isAdmin.value = msg.isAdmin;
         if (msg.role) this.myRole.value = msg.role;
-        if (msg.clientId) this.clientId.value = msg.clientId;
+        if (msg.clientId) {
+          this.clientId.value = msg.clientId;
+          try {
+            localStorage.setItem("jukebox_client_id", msg.clientId);
+          } catch {}
+        }
+        break;
+
+      case "pong":
         break;
 
       case "roleGranted":
@@ -236,6 +263,12 @@ export class JukeboxClient {
           for (const cb of this.triviaClosedListeners) {
             cb();
           }
+        } else if (
+          this.clientId.value &&
+          msg.state.players[this.clientId.value] &&
+          msg.state.players[this.clientId.value].isOnline === false
+        ) {
+          this.joinTriviaLobby();
         }
         break;
 

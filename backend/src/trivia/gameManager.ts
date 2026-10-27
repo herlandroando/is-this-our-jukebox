@@ -239,6 +239,24 @@ export class TriviaGameManager {
       return { success: true };
     }
 
+    // 1b. Kasus reconnect setelah incognito / clear cache: cari offline player dengan nama yang sama
+    const cleanNick = (nickname || "").trim();
+    if (cleanNick && cleanNick.toLowerCase() !== "anonymous") {
+      const offlineMatch = Object.values(this.state.players).find(
+        (p) => !p.isOnline && p.nickname.trim().toLowerCase() === cleanNick.toLowerCase()
+      );
+      if (offlineMatch) {
+        const oldId = offlineMatch.clientId;
+        delete this.state.players[oldId];
+        offlineMatch.clientId = clientId;
+        offlineMatch.isOnline = true;
+        this.state.players[clientId] = offlineMatch;
+        console.log(`[trivia] Player "${offlineMatch.nickname}" (${oldId} -> ${clientId}) dipulihkan melalui pencocokan nama.`);
+        this.broadcast("playerJoined", { clientId, nickname: offlineMatch.nickname, isReconnect: true });
+        return { success: true };
+      }
+    }
+
     // 2. Kasus late-join saat game sudah berjalan (ronde 1 dst)
     if (this.state.status !== "lobby") {
       this.state.players[clientId] = {
@@ -309,6 +327,18 @@ export class TriviaGameManager {
     // Jika sedang dalam ronde dan semua player yang tersisa online sudah menjawab, selesaikan ronde
     if (this.state.status === "question") {
       this.checkAllAnsweredEarly();
+    }
+  }
+
+  /**
+   * Perbarui nickname pemain jika diubah saat sesi game
+   */
+  public updatePlayerNickname(clientId: string, nickname: string) {
+    if (!nickname) return;
+    const player = this.state.players[clientId];
+    if (player) {
+      player.nickname = nickname;
+      this.broadcast("stateSync", this.getState());
     }
   }
 

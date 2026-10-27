@@ -125,7 +125,8 @@ export type ClientMessage =
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
   | { type: "trivia:reportAudioIssue" }
   | { type: "trivia:skipQuestion"; token?: string }
-  | { type: "trivia:close"; token?: string };
+  | { type: "trivia:close"; token?: string }
+  | { type: "ping" };
 
 export interface ReactionBroadcastItem {
   id: string;
@@ -184,6 +185,7 @@ export type ServerMessage =
   | { type: "trivia:gameOver"; podium: TriviaPodiumEntry[] }
   | { type: "trivia:closed" }
   | { type: "trivia:presetsUpdated"; presets: TriviaPresetItem[] }
+  | { type: "pong" }
   | { type: "youtubeAuthStatus"; status: YouTubeCookieStatus };
 
 export interface YouTubeCookieStatus {

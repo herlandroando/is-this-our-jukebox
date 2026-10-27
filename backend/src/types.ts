@@ -134,11 +134,13 @@ export type ClientMessage =
   | { type: "trivia:answer"; roundIndex: number; optionId: string }
   | { type: "trivia:reportAudioIssue" }
   | { type: "trivia:skipQuestion"; token?: string }
-  | { type: "trivia:close"; token?: string };
+  | { type: "trivia:close"; token?: string }
+  | { type: "ping" };
 
 export type ServerMessage =
   | { type: "welcome"; isAdmin: boolean; clientId: string; role: MemberRole }
   | { type: "stateSync"; state: ServerState }
+  | { type: "pong" }
   | { type: "timeUpdate"; currentTime: number; duration: number }
   | { type: "seek"; time: number }
   | { type: "queueUpdated"; queue: QueueTrack[] }

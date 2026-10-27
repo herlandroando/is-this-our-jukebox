@@ -496,12 +496,24 @@ const server = Bun.serve<WsUserData>({
       const clientIp = cfIp || forwardedFor || rawIp || "127.0.0.1";
       const token = url.searchParams.get("token");
       const isAdmin = token ? verifyAdminToken(token) : false;
+      const requestedClientId = url.searchParams.get("clientId")?.trim();
+      const requestedNickname = url.searchParams.get("nickname")?.trim();
+
+      // Validate clientId format: alphanumeric, dashes, underscores, length 4..64
+      const validClientId =
+        requestedClientId && /^[a-zA-Z0-9_-]{4,64}$/.test(requestedClientId)
+          ? requestedClientId
+          : (isAdmin ? "host_dj" : `c_${randomUUID().slice(0, 12)}`);
+
+      const initialNickname = requestedNickname
+        ? requestedNickname.slice(0, 30)
+        : (isAdmin ? "Host DJ 🎧" : "Anonymous");
 
       const upgraded = server.upgrade(req, {
         data: {
-          id: randomUUID(),
+          id: validClientId,
           ip: clientIp,
-          nickname: isAdmin ? "Host DJ 🎧" : "Anonymous",
+          nickname: initialNickname,
           role: isAdmin ? "host" : "member",
           isAdmin,
           connectedAt: Date.now(),
@@ -512,6 +524,8 @@ const server = Bun.serve<WsUserData>({
     return app.fetch(req);
   },
   websocket: {
+    idleTimeout: 30,
+    sendPings: true,
     open(ws) {
       wsHub.handleOpen(ws);
     },
