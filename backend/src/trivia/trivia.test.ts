@@ -109,11 +109,11 @@ describe("Trivia Game Manager & Smart Decoys", () => {
     // Record sample plays into SQLite
     jukeboxDb.recordTrackPlayed({
       queueId: "q-1",
-      id: "test-artist-1",
+      id: "arilasso_hampa_1",
       provider: "yt",
       title: "Hampa",
       artist: "Ari Lasso",
-      requestedBy: "Tester",
+      requestedBy: "Ando",
       requestedAt: Date.now(),
       votes: 1,
       voters: [],
@@ -124,11 +124,11 @@ describe("Trivia Game Manager & Smart Decoys", () => {
     });
     jukeboxDb.recordTrackPlayed({
       queueId: "q-2",
-      id: "test-artist-2",
+      id: "arilasso_misteri_2",
       provider: "yt",
       title: "Misteri Ilahi",
       artist: "Ari Lasso",
-      requestedBy: "Tester",
+      requestedBy: "Ando",
       requestedAt: Date.now(),
       votes: 1,
       voters: [],

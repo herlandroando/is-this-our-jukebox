@@ -28,6 +28,71 @@ export interface CachedTrackMetadata {
   updatedAt: number;
 }
 
+const TEST_REQUESTERS = new Set([
+  "sarah dev",
+  "alex host",
+  "alex coworker",
+  "office dj",
+  "tester",
+  "test user",
+]);
+
+const TEST_CLIENT_IDS = new Set([
+  "c_sarah",
+  "c_alex",
+  "test_coworker_1",
+  "test_client",
+]);
+
+const TEST_TITLES = new Set([
+  "office chill anthem",
+  "synthwave beats to focus",
+  "lagu test",
+]);
+
+const TEST_ARTISTS = new Set([
+  "the developers",
+  "synthmaster",
+  "artis test",
+]);
+
+export function isTestingTrack(track?: {
+  id?: string;
+  title?: string;
+  artist?: string;
+  thumbnail?: string;
+  requestedBy?: string;
+  clientId?: string;
+} | null): boolean {
+  if (!track) return false;
+  const id = (track.id || "").trim().toLowerCase();
+  const title = (track.title || "").trim().toLowerCase();
+  const artist = (track.artist || "").trim().toLowerCase();
+  const thumb = (track.thumbnail || "").trim().toLowerCase();
+  const reqBy = (track.requestedBy || "").trim().toLowerCase();
+  const clientId = (track.clientId || "").trim().toLowerCase();
+
+  if (id.startsWith("test")) return true;
+  if (TEST_TITLES.has(title) || title.includes("lagu test") || title.includes("test track") || title.includes("testing")) return true;
+  if (TEST_ARTISTS.has(artist)) return true;
+  if (thumb.includes("example.com")) return true;
+  if (TEST_REQUESTERS.has(reqBy)) return true;
+  if (TEST_CLIENT_IDS.has(clientId)) return true;
+  return false;
+}
+
+const NOT_TESTING_TRACK_SQL = `(
+  lower(id) NOT LIKE 'test%'
+  AND lower(title) NOT IN ('office chill anthem', 'synthwave beats to focus', 'lagu test')
+  AND lower(title) NOT LIKE '%lagu test%'
+  AND lower(title) NOT LIKE '%test track%'
+  AND lower(title) NOT LIKE '%testing%'
+  AND lower(artist) NOT IN ('the developers', 'synthmaster', 'artis test')
+  AND lower(COALESCE(thumbnail, '')) NOT LIKE '%example.com%'
+  AND lower(COALESCE(requested_by, '')) NOT IN ('sarah dev', 'alex host', 'alex coworker', 'office dj', 'tester', 'test user')
+  AND lower(COALESCE(client_id, '')) NOT IN ('c_sarah', 'c_alex', 'test_coworker_1', 'test_client')
+)`;
+
 class JukeboxDatabase {
   private db: Database;
   private clearQueueStmt!: ReturnType<Database["prepare"]>;
@@ -43,18 +108,27 @@ class JukeboxDatabase {
   private saveMetadataStmt!: ReturnType<Database["prepare"]>;
 
   constructor() {
-    const defaultPath = join(process.cwd(), "data", "jukebox.db");
+    const isTestEnv =
+      process.env.NODE_ENV === "test" ||
+      process.env.BUN_ENV === "test" ||
+      process.argv.some((arg) => arg === "test" || arg.endsWith(".test.ts"));
+    const defaultPath = isTestEnv ? ":memory:" : join(process.cwd(), "data", "jukebox.db");
     const dbPath = process.env.JUKEBOX_DB_PATH || defaultPath;
 
-    const dir = dirname(dbPath);
-    if (dir && dir !== "." && dir !== "/" && dir !== "\\" && !existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+    if (dbPath !== ":memory:") {
+      const dir = dirname(dbPath);
+      if (dir && dir !== "." && dir !== "/" && dir !== "\\" && !existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
     }
 
     this.db = new Database(dbPath);
-    this.db.run("PRAGMA journal_mode = WAL;");
+    if (dbPath !== ":memory:") {
+      this.db.run("PRAGMA journal_mode = WAL;");
+    }
     this.initTables();
     this.initStatements();
+    this.purgeTestingTracks();
   }
 
   private initStatements() {
@@ -258,9 +332,42 @@ class JukeboxDatabase {
     this.seedDefaultTriviaPresets();
   }
 
+  public purgeTestingTracks(): void {
+    try {
+      this.db.run(`DELETE FROM track_stats WHERE NOT ${NOT_TESTING_TRACK_SQL}`);
+      this.db.run(`
+        DELETE FROM queue_items
+        WHERE lower(id) LIKE 'test%'
+           OR lower(title) IN ('office chill anthem', 'synthwave beats to focus', 'lagu test')
+           OR lower(title) LIKE '%lagu test%'
+           OR lower(title) LIKE '%test track%'
+           OR lower(title) LIKE '%testing%'
+           OR lower(artist) IN ('the developers', 'synthmaster', 'artis test')
+           OR lower(COALESCE(thumbnail, '')) LIKE '%example.com%'
+           OR lower(COALESCE(requested_by, '')) IN ('sarah dev', 'alex host', 'alex coworker', 'office dj', 'tester', 'test user')
+      `);
+      this.db.run(`
+        DELETE FROM rhythm_scores
+        WHERE lower(track_id) LIKE 'test%'
+           OR lower(track_title) IN ('office chill anthem', 'synthwave beats to focus', 'lagu test')
+           OR lower(track_title) LIKE '%lagu test%'
+           OR lower(track_title) LIKE '%test track%'
+           OR lower(track_title) LIKE '%testing%'
+      `);
+
+      const np = this.loadNowPlaying();
+      if (np?.track && isTestingTrack(np.track)) {
+        this.saveNowPlaying(null, 0, 0);
+      }
+    } catch (err) {
+      console.warn("[db] purgeTestingTracks warning:", err);
+    }
+  }
+
   // --- Queue Persistence ---
 
   public saveQueue(items: QueueTrack[]) {
+    const cleanItems = items.filter((t) => !isTestingTrack(t));
     const tx = this.db.transaction((tracks: QueueTrack[]) => {
       this.clearQueueStmt.run();
 
@@ -288,7 +395,7 @@ class JukeboxDatabase {
     });
 
     try {
-      tx(items);
+      tx(cleanItems);
     } catch (err) {
       console.error("[db] Error saving queue:", err);
     }
@@ -298,23 +405,25 @@ class JukeboxDatabase {
     try {
       const rows = this.loadQueueStmt.all() as any[];
 
-      return rows.map((r) => ({
-        queueId: r.queue_id,
-        id: r.id,
-        provider: r.provider,
-        permalink: r.permalink || undefined,
-        title: r.title,
-        artist: r.artist,
-        thumbnail: r.thumbnail || "",
-        duration: r.duration,
-        requestedBy: r.requested_by,
-        requestedAt: r.requested_at,
-        votes: r.votes,
-        voters: JSON.parse(r.voters_json || "[]"),
-        votedIps: JSON.parse(r.voted_ips_json || "[]"),
-        status: r.status,
-        fallbackCount: r.fallback_count || 0,
-      }));
+      return rows
+        .map((r) => ({
+          queueId: r.queue_id,
+          id: r.id,
+          provider: r.provider,
+          permalink: r.permalink || undefined,
+          title: r.title,
+          artist: r.artist,
+          thumbnail: r.thumbnail || "",
+          duration: r.duration,
+          requestedBy: r.requested_by,
+          requestedAt: r.requested_at,
+          votes: r.votes,
+          voters: JSON.parse(r.voters_json || "[]"),
+          votedIps: JSON.parse(r.voted_ips_json || "[]"),
+          status: r.status,
+          fallbackCount: r.fallback_count || 0,
+        }))
+        .filter((t) => !isTestingTrack(t));
     } catch (err) {
       console.error("[db] Error loading queue:", err);
       return [];
@@ -325,8 +434,9 @@ class JukeboxDatabase {
 
   public saveNowPlaying(track: QueueTrack | null, currentTime: number = 0, duration: number = 0) {
     try {
+      const safeTrack = track && !isTestingTrack(track) ? track : null;
       this.saveNowPlayingStmt.run(
-        track ? JSON.stringify(track) : null,
+        safeTrack ? JSON.stringify(safeTrack) : null,
         currentTime,
         duration,
         Date.now()
@@ -342,6 +452,7 @@ class JukeboxDatabase {
       if (!row || !row.track_json) return null;
 
       const track = JSON.parse(row.track_json) as QueueTrack;
+      if (isTestingTrack(track)) return null;
       return {
         track,
         currentTime: row.seek_time || 0,
@@ -356,6 +467,10 @@ class JukeboxDatabase {
   // --- Track History & Play Count Statistics ---
 
   public recordTrackPlayed(track: QueueTrack, clientId?: string) {
+    const resolvedClientId = clientId || (track.voters && track.voters[0]?.clientId) || undefined;
+    if (isTestingTrack({ ...track, clientId: resolvedClientId })) {
+      return;
+    }
     try {
       this.recordTrackStmt.run(
         track.id,
@@ -366,7 +481,7 @@ class JukeboxDatabase {
         track.thumbnail || null,
         track.duration || 0,
         track.requestedBy || "Auto-DJ 🎧",
-        clientId || (track.voters && track.voters[0]?.clientId) || null,
+        resolvedClientId || null,
         Date.now()
       );
     } catch (err) {
@@ -383,6 +498,7 @@ class JukeboxDatabase {
             COUNT(*) as play_count,
             MAX(played_at) as last_played_at
           FROM track_stats
+          WHERE ${NOT_TESTING_TRACK_SQL}
           GROUP BY id
           ORDER BY play_count DESC, last_played_at DESC
           LIMIT ?
@@ -417,6 +533,7 @@ class JukeboxDatabase {
               MAX(played_at) as recent_time
             FROM track_stats
             WHERE client_id = ?
+              AND ${NOT_TESTING_TRACK_SQL}
             GROUP BY id
             ORDER BY recent_time DESC
             LIMIT ?
@@ -429,6 +546,7 @@ class JukeboxDatabase {
               id, provider, permalink, title, artist, thumbnail, duration,
               MAX(played_at) as recent_time
             FROM track_stats
+            WHERE ${NOT_TESTING_TRACK_SQL}
             GROUP BY id
             ORDER BY recent_time DESC
             LIMIT ?
@@ -594,6 +712,11 @@ class JukeboxDatabase {
             (SELECT grade FROM rhythm_scores WHERE track_id = s.track_id ORDER BY score DESC LIMIT 1) as top_grade
           FROM rhythm_scores s
           WHERE (? = '' OR s.track_title LIKE ? OR s.track_artist LIKE ?)
+            AND lower(s.track_id) NOT LIKE 'test%'
+            AND lower(s.track_title) NOT IN ('office chill anthem', 'synthwave beats to focus', 'lagu test')
+            AND lower(s.track_title) NOT LIKE '%lagu test%'
+            AND lower(s.track_title) NOT LIKE '%test track%'
+            AND lower(s.track_title) NOT LIKE '%testing%'
           GROUP BY s.track_id
           ORDER BY top_score DESC
           LIMIT ?
@@ -921,11 +1044,11 @@ class JukeboxDatabase {
 
       const rows = this.db.prepare(`
         SELECT title, artist FROM (
-          SELECT title, artist FROM track_stats WHERE lower(artist) LIKE ?
+          SELECT title, artist FROM track_stats WHERE lower(artist) LIKE ? AND ${NOT_TESTING_TRACK_SQL}
           UNION
-          SELECT title, artist FROM track_metadata_cache WHERE lower(artist) LIKE ?
+          SELECT title, artist FROM track_metadata_cache WHERE lower(artist) LIKE ? AND lower(id) NOT LIKE 'test%'
           UNION
-          SELECT track_title as title, track_artist as artist FROM rhythm_scores WHERE lower(track_artist) LIKE ?
+          SELECT track_title as title, track_artist as artist FROM rhythm_scores WHERE lower(track_artist) LIKE ? AND lower(track_id) NOT LIKE 'test%'
         )
         WHERE lower(title) NOT LIKE ?
         LIMIT ?
