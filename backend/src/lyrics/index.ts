@@ -908,6 +908,80 @@ async function fetchFromKugou(
 }
 
 /**
+ * Fetches synchronized LRC lyrics from NetEase Cloud Music (163 Music).
+ * Features 50M+ songs with high-precision millisecond timestamps.
+ * Protected with strict 2.5s timeout and error silencer.
+ */
+async function fetchFromNetEase(
+  title: string,
+  artist: string,
+  duration?: number
+): Promise<LyricsData | null> {
+  try {
+    const query = `${artist} ${title}`.trim();
+    const searchUrl = "https://music.163.com/api/cloudsearch/pc";
+    const res = await fetch(searchUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": "https://music.163.com",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      body: `s=${encodeURIComponent(query)}&type=1&limit=4`,
+      signal: AbortSignal.timeout(2500),
+    });
+
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const songs = data?.result?.songs;
+    if (!Array.isArray(songs) || songs.length === 0) return null;
+
+    for (const song of songs) {
+      if (!song.id) continue;
+      const songName = song.name || "";
+      const artistName = song.ar?.[0]?.name || song.artists?.[0]?.name || "";
+
+      const titleSim = calculateSimilarity(title, songName);
+      if (titleSim < 0.45) continue;
+      if (artist) {
+        const artistSim = calculateSimilarity(artist, artistName);
+        if (artistSim < 0.3) continue;
+      }
+
+      const lyricUrl = `https://music.163.com/api/song/lyric?id=${song.id}&lv=1&kv=1&tv=-1`;
+      const lyricRes = await fetch(lyricUrl, {
+        headers: {
+          "Referer": "https://music.163.com",
+          "User-Agent": "Mozilla/5.0",
+        },
+        signal: AbortSignal.timeout(2000),
+      });
+
+      if (!lyricRes.ok) continue;
+      const lyricData: any = await lyricRes.json();
+      const rawLrc = lyricData?.lrc?.lyric;
+      if (!rawLrc || typeof rawLrc !== "string") continue;
+
+      const lines = parseLrc(rawLrc);
+      const usableLines = lines.filter((l) => !/^(作词|作曲|编曲|制作|Arranger|Composer|Lyricist)/i.test(l.text.trim()));
+
+      if (usableLines.length >= 4) {
+        return {
+          synced: usableLines.some((l) => l.time > 0),
+          instrumental: false,
+          lines: usableLines,
+          source: "NetEase",
+        };
+      }
+    }
+  } catch (e) {
+    // Silently continue to next provider on timeout or error
+  }
+  return null;
+}
+
+/**
  * Fetches plain lyrics from lyrics.ovh as a safety fallback.
  */
 async function fetchFromLyricsOvh(
@@ -990,7 +1064,15 @@ export async function getLyrics(
       return lrclibResult;
     }
 
-    // 3. Unison direct song + artist lookup
+    // 3. NetEase Cloud Music (50M+ synchronized LRC database with millisecond timestamps)
+    const neteaseResult = await fetchFromNetEase(title, artist, duration);
+    if (neteaseResult && neteaseResult.lines.length > 0) {
+      neteaseResult.lines = await addRomajiToLyrics(neteaseResult.lines);
+      setCachedLyrics(cacheKey, neteaseResult);
+      return neteaseResult;
+    }
+
+    // 4. Unison direct song + artist lookup
     const unisonDirectResult = await fetchFromUnison(title, artist, { duration });
     if (unisonDirectResult && unisonDirectResult.lines.length > 0) {
       unisonDirectResult.lines = await addRomajiToLyrics(unisonDirectResult.lines);
