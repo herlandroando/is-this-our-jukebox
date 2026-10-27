@@ -610,14 +610,15 @@ export class QueueStore {
       this.nowPlaying = this.savedJukeboxState.track;
       this.currentTime = this.savedJukeboxState.currentTime;
       this.duration = this.savedJukeboxState.duration;
-      this.isPlaying = true;
+      const shouldPlay = Boolean(this.savedJukeboxState.isPlaying);
+      this.isPlaying = shouldPlay;
       const title = this.nowPlaying.title;
       this.savedJukeboxState = null;
       this.persistNowPlaying();
       this.notify();
-      this.toast(`Melanjutkan lagu: "${title}" 🎵`, "success");
-    } else if (!this.nowPlaying && this.queue.length > 0) {
-      void this.nextTrack();
+      if (shouldPlay) {
+        this.toast(`Melanjutkan lagu: "${title}" 🎵`, "success");
+      }
     }
   }
 
