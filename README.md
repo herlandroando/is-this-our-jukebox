@@ -52,14 +52,14 @@
   - **Members**: Office listeners requesting, upvoting, and enjoying the music.
 
 ### 🎮 Office Arcade (Party Games)
-- 💣 **Lyric Bomb / Bom Waktu Lirik (Hot Potato Multiplayer)**:
-  Game pesta eliminasi nyawa & bom waktu interaktif. Pemain bergiliran menyusun potongan kata lirik lagu yang sedang diputar ketika musik tiba-tiba berhenti. Pemegang bom harus menekan urutan kata yang tepat sebelum bom meledak di tangannya! Jika berhasil, musik lanjut mengalun dan bom terlempar ke pemain berikutnya dengan durasi yang kian memendek setiap rondenya. Jika lagu berhasil diselesaikan bersama hingga akhir, semua pemain yang masih hidup berhak mendapatkan +1 bonus nyawa (HP). Dilengkapi sistem *pre-validation* YouTube Music yang otomatis mendeteksi ketersediaan lirik bersinkronisasi waktu (*synced lyrics*).
-- 🎵 **Tebak Lagu / Trivia Song-Guess Multiplayer**:
-  Host-gated party game. The Host picks a curated genre preset (Pop Indo, Indie Indo, Rock Indo, …) or pastes a YouTube Music playlist URL (validated live via `POST /api/trivia/preview-playlist`), chooses rounds (5/10/15) and snippet length (10/20/30s), then starts. Players get a lobby invite, toggle ready, guess from 4 multiple-choice `Judul – Artis` options while a 20–30s snippet streams via `/api/stream/:id`. Fastest-correct answers earn speed-bonus points, with per-round recaps and a Top-3 podium. Room music auto-pauses and resumes afterwards. Sources include current queue vibes, office history, genre presets, and custom playlists (SQLite-cached, 12h TTL).
+- 💣 **Lyric Bomb (Hot Potato Multiplayer)**:
+  An interactive elimination party game with lives and a ticking time-bomb. Players take turns arranging word chunks from the currently playing song's lyrics when the music suddenly stops. Whoever holds the bomb must tap the correct word sequence before it explodes in their hands! On success, the music plays on and the bomb is tossed to the next player with a fuse that gets shorter every round. If the song is completed together all the way to the end, every surviving player earns a +1 bonus life (HP). Includes a YouTube Music *pre-validation* system that automatically detects the availability of time-synced lyrics (*synced lyrics*).
+- 🎵 **Song Guess (Trivia Multiplayer)**:
+  Host-gated party game. The Host picks a curated genre preset (Pop Indo, Indie Indo, Rock Indo, …) or pastes a YouTube Music playlist URL (validated live via `POST /api/trivia/preview-playlist`), chooses rounds (5/10/15) and snippet length (10/20/30s), then starts. Players get a lobby invite, toggle ready, guess from 4 multiple-choice `Title – Artist` options while a 20–30s snippet streams via `/api/stream/:id`. Fastest-correct answers earn speed-bonus points, with per-round recaps and a Top-3 podium. Room music auto-pauses and resumes afterwards. Sources include current queue vibes, office history, genre presets, and custom playlists (SQLite-cached, 12h TTL).
 - 🎹 **osu!mania 4-Key Rhythm Game** *(currently hidden — in polish)*:
   4-lane rhythm gameplay (`D F J K`, remappable + touch) synced to the now-playing track. Deterministic seeded beatmaps per `trackId + difficulty (easy/normal/hard)`, timing windows down to 22ms for MAX, combo/score/accuracy/grade (`SS/S/A/B/C/D`), floating judges + hit FX, and persistent SQLite leaderboards (per-track Top-10, all ranked songs, global Hall of Fame with live `#1` toast). Re-enable by setting `SHOW_OSU_MODE = true` in `frontend/src/shared/config.ts`.
 - 🕹️ **Persona 5 Arcade Hub Skin**:
-  `OFFICE ARCADE // MINIGAME CENTER` modal with featured cards for Tebak Lagu, Rhythm 4K, and Leaderboards — plus slanted red/cyan P5 command ribbons, HP/SP-style Now-Playing gauges, and a full-screen Battle Stage layout. Pure Tailwind (`p5-*` utilities), no gameplay logic changes.
+  `OFFICE ARCADE // MINIGAME CENTER` modal with featured cards for Song Guess, Rhythm 4K, and Leaderboards — plus slanted red/cyan P5 command ribbons, HP/SP-style Now-Playing gauges, and a full-screen Battle Stage layout. Pure Tailwind (`p5-*` utilities), no gameplay logic changes.
 
 ### 💜 Social & Mascot
 - 🎭 **Juke-chan Mood DJ Mascot** — meet her [below](#-meet-juke-chan--our-resident-mood-dj):
@@ -74,12 +74,12 @@
 ## 💜 Meet Juke-chan — Our Resident Mood DJ
 
 <div align="center">
-  <img src="assets/jukechan.svg" alt="Juke-chan expression sheet — Neutral, Happy Peace, Pout (Ngambek), Galau" width="720" style="border-radius: 16px;" />
+  <img src="assets/jukechan.svg" alt="Juke-chan expression sheet — Neutral, Happy Peace, Pout, Galau" width="720" style="border-radius: 16px;" />
 
-  *“Ehehe~ Juke-chan yang jaga booth hari ini! Request lagu yang bagus ya~ 🎧✨”*
+  *“Ehehe~ Juke-chan is on booth duty today! Request some good songs, okay~ 🎧✨”*
 </div>
 
-**Juke-chan** is the soul of the jukebox — a headphone-wearing DJ girl with long purple hair, neon-cyan earcups, a music-note ahoge (antenna!), and a sailor top with a live equalizer that pulses to the room's music. She lives on every screen, bounces to the kick drum, and always has something to say — in playful Indonesian mixed with English lyric quotes. The sheet above is her actual vector artboard (`assets/jukechan.svg`) — all four canon expressions, drawn to match her in-app rig.
+**Juke-chan** is the soul of the jukebox — a headphone-wearing DJ girl with long purple hair, neon-cyan earcups, a music-note ahoge (antenna!), and a sailor top with a live equalizer that pulses to the room's music. She lives on every screen, bounces to the kick drum, and always has something to say — playful DJ banter sprinkled with lyric quotes. The sheet above is her actual vector artboard (`assets/jukechan.svg`) — all four canon expressions, drawn to match her in-app rig.
 
 ### 🌈 Four moods, four Juke-chans
 
@@ -87,16 +87,16 @@ Her outfit glow, stage lighting, bounce speed, and even her greetings shift with
 
 | Mood | Badge | Vibe | You'll hear her say… |
 |---|---|---|---|
-| ⚡ **Hype** | Electronic Hype | Fast, loud, party bangers — neon purple stage, 0.45s bounce | *“DROP THE BEAT! Lagu ini enerjik banget, ayo goyang semuanya! 🔥⚡”* |
-| ☕ **Lo-Fi** | Midnight Lo-Fi | Chill, rain, study beats — deep blue room, slow sway | *“Suasana tenang terdeteksi... paling enak kerja sambil dengerin vibes ini ☕🌧️”* |
-| 🌸 **Romance** | Sweet City Pop | Love songs & city pop — warm pink glow | *“Aww melodinya manis banget! Siapa nih yang lagi jatuh cinta? 💖🌸”* |
-| 🌧️ **Galau** | Sad Indie Acoustic | Sad acoustic & heartbreak ballads — teary eyes, hand on chest | *“Liriknya dalem banget... sini nemenin Juke-chan, jangan sedih sendirian ya 🥺🌧️”* |
+| ⚡ **Hype** | Electronic Hype | Fast, loud, party bangers — neon purple stage, 0.45s bounce | *“DROP THE BEAT! This song is pure energy, everybody dance! 🔥⚡”* |
+| ☕ **Lo-Fi** | Midnight Lo-Fi | Chill, rain, study beats — deep blue room, slow sway | *“Calm vibes detected... this is the coziest way to work with these sounds on ☕🌧️”* |
+| 🌸 **Romance** | Sweet City Pop | Love songs & city pop — warm pink glow | *“Aww, this melody is so sweet! Who's falling in love out there? 💖🌸”* |
+| 🌧️ **Galau** | Sad Indie Acoustic | Sad acoustic & heartbreak ballads — teary eyes, hand on chest | *“The lyrics cut so deep... come sit with Juke-chan, don't be sad all alone, okay? 🥺🌧️”* |
 
 ### 😤 She's interactive (go ahead, poke her)
 
-- **Pat her head** → happy purrs (*“Ehehe~ dielus-elus gini bikin Juke-chan makin semangat nge-DJ!”*)
-- **Pinch her cheek / flick her ahoge** → flustered protests (*“Itu antena sinyal musik, jangan disentil dong! ⚡”*)
-- **Poke-spam her 6× in 3 seconds** → she **pouts (ngambek)** for 5s with puffed cheeks and crossed arms — keep poking and the sulk timer extends!
+- **Pat her head** → happy purrs (*“Ehehe~ head pats like this make Juke-chan even more hyped to DJ!”*)
+- **Pinch her cheek / flick her ahoge** → flustered protests (*“That's my music-signal antenna, don't flick it! ⚡”*)
+- **Poke-spam her 6× in 3 seconds** → she **pouts and sulks** for 5s with puffed cheeks and crossed arms — keep poking and the sulk timer extends!
 - **Leave her alone ~90s** → she gets drowsy; **~150s** → fast asleep with `zzz` bubbles (but she *never* sleeps while music is playing — tap her to wake her up).
 - **Spam emoji reactions** → she dances, cheers, and calls out combos (*“🔥 COMBO x50! ULTRA BASS SURGE!!”*); each emoji family has its own line, from air-guitar solos to heart-hands.
 - **Room events** → she welcomes newcomers by name, celebrates new queue requests/upvotes, gasps when a track is skipped, and hands you the mic when Karaoke mode turns on.
@@ -128,7 +128,7 @@ Under the hood she's a full Live2D-style SVG rig (`JukeChanRig.vue` + spring phy
 4. Coworkers scan the on-screen QR code on their smartphones (or navigate to `http://<LAN-IP>:3000`) to start adding songs!
 
 ### 🎮 Starting a Trivia Night
-1. In Host Studio, open **Office Arcade → Tebak Lagu**.
+1. In Host Studio, open **Office Arcade → Song Guess**.
 2. Pick a **Preset** (curated category) or **Custom** (paste a YouTube Music playlist URL — it validates live).
 3. Choose rounds (5/10/15) and snippet length (10/20/30s), then **Start**.
 4. Players tap the lobby invite → toggle **Ready** → guess fast for bonus points!
