@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { jukeboxClient } from "../shared/ws.ts";
+import { registerModal, registerSearchFocus } from "../shared/useModalStack.ts";
 import ClientDesktopLayout from "../components/client/desktop/ClientDesktopLayout.vue";
 import ClientMobileLayout from "../components/client/mobile/ClientMobileLayout.vue";
 import DjPasscodeModal from "../components/DjPasscodeModal.vue";
@@ -197,13 +198,75 @@ watch(
   { immediate: true, deep: true }
 );
 
+function bindModalToStack(isOpenRef: { value: boolean }, id: string) {
+  let unreg: (() => void) | null = null;
+  watch(
+    () => isOpenRef.value,
+    (open) => {
+      if (unreg) {
+        unreg();
+        unreg = null;
+      }
+      if (open) {
+        unreg = registerModal(id, () => {
+          isOpenRef.value = false;
+        });
+      }
+    },
+    { immediate: true }
+  );
+  onBeforeUnmount(() => {
+    if (unreg) {
+      unreg();
+      unreg = null;
+    }
+  });
+}
+
+bindModalToStack(isPasscodeModalOpen, "client-passcode");
+bindModalToStack(isGameHubOpen, "client-gamehub");
+bindModalToStack(isLeaderboardModalOpen, "client-leaderboard");
+bindModalToStack(isRhythmModalOpen, "client-rhythm");
+bindModalToStack(isTriviaHostSetupOpen, "client-trivia-setup");
+bindModalToStack(isTriviaModalOpen, "client-trivia");
+bindModalToStack(isLyricBombModalOpen, "client-lyricbomb");
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select" || (e.target as HTMLElement)?.isContentEditable) return;
+  if (e.key === "1") activeTab.value = "queue";
+  else if (e.key === "2") activeTab.value = "catalog";
+  else if (e.key === "3") activeTab.value = "lyrics";
+}
+
+let unregisterSearch: (() => void) | null = null;
+
 onMounted(() => {
   startIdleLoop();
   jukeboxClient.connect();
+  window.addEventListener("keydown", handleGlobalKeydown);
+
+  unregisterSearch = registerSearchFocus(() => {
+    activeTab.value = "catalog";
+    nextTick(() => {
+      const searchInput = document.querySelector<HTMLInputElement>(
+        '.search-input, input[type="text"][placeholder*="Search"], input[type="text"][placeholder*="Cari"]'
+      );
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+  });
 });
 
 onBeforeUnmount(() => {
   stopIdleLoop();
+  window.removeEventListener("keydown", handleGlobalKeydown);
+  if (unregisterSearch) {
+    unregisterSearch();
+    unregisterSearch = null;
+  }
 });
 
 function onUpdateNickname(name: string) {

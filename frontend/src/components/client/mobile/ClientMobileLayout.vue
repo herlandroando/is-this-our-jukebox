@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, onBeforeUnmount } from "vue";
 import type { MemberRole, QueueTrack } from "../../../shared/types.ts";
 import type { HeadphoneSyncStatus } from "../../../shared/useHeadphoneAudio.ts";
 import MobileHeader from "./MobileHeader.vue";
@@ -13,6 +13,7 @@ import JukeChanStage from "../../mascot/JukeChanStage.vue";
 import PersonaNowPlayingGauge from "../../persona/PersonaNowPlayingGauge.vue";
 import PersonaOverlayPanel from "../../persona/PersonaOverlayPanel.vue";
 import { useJukeChanMood } from "../../../shared/useJukeChanMood.ts";
+import { registerModal } from "../../../shared/useModalStack.ts";
 
 const props = defineProps<{
   activeTab: "queue" | "catalog" | "lyrics";
@@ -85,6 +86,34 @@ watch(
     }
   }
 );
+
+watch(
+  () => props.activeTab,
+  (tab) => {
+    if (tab) {
+      activeOverlay.value = tab;
+    }
+  }
+);
+
+let unregisterOverlay: (() => void) | null = null;
+watch(activeOverlay, (val) => {
+  if (unregisterOverlay) {
+    unregisterOverlay();
+    unregisterOverlay = null;
+  }
+  if (val !== "none") {
+    unregisterOverlay = registerModal("client-mobile-overlay", () => {
+      closeOverlay();
+    });
+  }
+});
+onBeforeUnmount(() => {
+  if (unregisterOverlay) {
+    unregisterOverlay();
+    unregisterOverlay = null;
+  }
+});
 
 function toggleOverlay(tab: "queue" | "catalog" | "lyrics") {
   if (activeOverlay.value === tab) {

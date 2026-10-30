@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute } from "vue-router";
 import { jukeboxClient } from "../shared/ws.ts";
 import { whoami, getYouTubeAuthStatus } from "../shared/api.ts";
+import { registerModal, registerSearchFocus } from "../shared/useModalStack.ts";
 import YouTubeAuthModal from "../components/auth/YouTubeAuthModal.vue";
 import AudioEngine from "../components/AudioEngine.vue";
 import Visualizer from "../components/Visualizer.vue";
@@ -259,6 +260,84 @@ function toggleOverlay(tab: Exclude<HostOverlay, "none">) {
 function closeOverlay() {
   activeOverlay.value = "none";
 }
+
+function bindModalToStack(isOpenRef: { value: boolean }, id: string) {
+  let unreg: (() => void) | null = null;
+  watch(
+    () => isOpenRef.value,
+    (open) => {
+      if (unreg) {
+        unreg();
+        unreg = null;
+      }
+      if (open) {
+        unreg = registerModal(id, () => {
+          isOpenRef.value = false;
+        });
+      }
+    },
+    { immediate: true }
+  );
+  onBeforeUnmount(() => {
+    if (unreg) {
+      unreg();
+      unreg = null;
+    }
+  });
+}
+
+bindModalToStack(isYouTubeAuthModalOpen, "host-yt-auth");
+bindModalToStack(isMemberDrawerOpen, "host-members");
+bindModalToStack(isGameHubOpen, "host-gamehub");
+bindModalToStack(isLeaderboardModalOpen, "host-leaderboard");
+bindModalToStack(isRhythmModalOpen, "host-rhythm");
+bindModalToStack(isTriviaHostSetupOpen, "host-trivia-setup");
+bindModalToStack(isTriviaModalOpen, "host-trivia");
+bindModalToStack(isLyricBombModalOpen, "host-lyricbomb");
+
+let unregisterOverlay: (() => void) | null = null;
+watch(activeOverlay, (val) => {
+  if (unregisterOverlay) {
+    unregisterOverlay();
+    unregisterOverlay = null;
+  }
+  if (val !== "none") {
+    unregisterOverlay = registerModal("host-overlay", () => {
+      closeOverlay();
+    });
+  }
+});
+onBeforeUnmount(() => {
+  if (unregisterOverlay) {
+    unregisterOverlay();
+    unregisterOverlay = null;
+  }
+});
+
+let unregisterSearch: (() => void) | null = null;
+onMounted(() => {
+  unregisterSearch = registerSearchFocus(() => {
+    if (activeOverlay.value !== "catalog") {
+      activeOverlay.value = "catalog";
+      onTabSwitch("catalog");
+    }
+    nextTick(() => {
+      const searchInput = document.querySelector<HTMLInputElement>(
+        '.search-input, input[type="text"][placeholder*="Search"], input[type="text"][placeholder*="Cari"]'
+      );
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+  });
+});
+onBeforeUnmount(() => {
+  if (unregisterSearch) {
+    unregisterSearch();
+    unregisterSearch = null;
+  }
+});
 
 function handleGlobalKeydown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
