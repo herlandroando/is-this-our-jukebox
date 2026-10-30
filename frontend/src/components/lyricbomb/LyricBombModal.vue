@@ -58,8 +58,27 @@ const wrongTapChipId = ref<string | null>(null);
 const showWrongPenaltyBanner = ref(false);
 let wrongTapTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Kaboom Explosion FX state
+const isKaboomExploding = ref(false);
+let kaboomTimer: ReturnType<typeof setTimeout> | null = null;
+
+function triggerKaboom() {
+  personaAudio.playKaboom();
+  isKaboomExploding.value = true;
+  if ("vibrate" in navigator) {
+    try {
+      navigator.vibrate([80, 40, 140, 50, 320]);
+    } catch {}
+  }
+  if (kaboomTimer) clearTimeout(kaboomTimer);
+  kaboomTimer = setTimeout(() => {
+    isKaboomExploding.value = false;
+  }, 950);
+}
+
 // Buka kunci autoplay peramban dengan gestur interaksi pengguna
 function primeAudio() {
+  personaAudio.prime();
   if (audioEl.value && audioEl.value.paused && (!audioEl.value.src || audioEl.value.src.startsWith("data:"))) {
     audioEl.value.src = SILENT_WAV;
     audioEl.value.play().catch((e) => console.warn("[LyricBomb] primeAudio note:", e));
@@ -463,12 +482,7 @@ watch(
       if (audioEl.value) {
         audioEl.value.pause();
       }
-      personaAudio.playMiss();
-      if (isMyTurn.value && "vibrate" in navigator) {
-        try {
-          navigator.vibrate([250, 100, 250]);
-        } catch {}
-      }
+      triggerKaboom();
     } else if (newStatus === "song_survived" && oldStatus !== "song_survived") {
       if (audioEl.value) {
         audioEl.value.pause();
@@ -505,7 +519,7 @@ watch(
       timeLeft > 0
     ) {
       if (timeLeft <= 6 || isMyTurn.value) {
-        personaAudio.playTick();
+        personaAudio.playTick(timeLeft <= 3);
       }
     }
   }
@@ -695,6 +709,7 @@ watch(
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
   if (wrongTapTimer) clearTimeout(wrongTapTimer);
+  if (kaboomTimer) clearTimeout(kaboomTimer);
   if (audioEl.value) {
     audioEl.value.pause();
     audioEl.value.src = "";
@@ -724,6 +739,7 @@ onBeforeUnmount(() => {
       :class="{
         'ring-4 ring-rose-600': isMyTurn && lbState?.status === 'defusing',
         'animate-shake-wrong': isShakingWrong,
+        'animate-kaboom-shake border-rose-500 ring-8 ring-rose-600/60': isKaboomExploding,
       }"
       style="transform: skewX(-1deg);"
     >
@@ -791,6 +807,18 @@ onBeforeUnmount(() => {
             <span class="uppercase text-[10px] tracking-wider">
               {{ hasReportedAudioIssue ? 'Dilaporkan ke Host' : 'Musik Gak Ada? Lapor Host' }}
             </span>
+          </button>
+
+          <!-- SFX Sound Toggle -->
+          <button
+            type="button"
+            :title="personaAudio.isSoundEnabled.value ? 'Matikan Suara SFX' : 'Nyalakan Suara SFX'"
+            @click="personaAudio.toggleSound()"
+            class="px-2.5 py-1.5 rounded-xl border text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 bg-black/50 hover:bg-white/10"
+            :class="personaAudio.isSoundEnabled.value ? 'text-amber-300 border-amber-400/40' : 'text-slate-400 border-white/20'"
+          >
+            <span>{{ personaAudio.isSoundEnabled.value ? '🔊' : '🔇' }}</span>
+            <span class="hidden sm:inline uppercase text-[10px] tracking-wider">{{ personaAudio.isSoundEnabled.value ? 'SFX ON' : 'SFX OFF' }}</span>
           </button>
 
           <!-- Speaker Indicator / Switcher (Non-Host) -->
@@ -1448,12 +1476,27 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- 4. EXPLODED VIEW -->
-        <div v-else-if="lbState?.status === 'exploded'" class="flex-1 flex flex-col items-center justify-center text-center gap-5 py-6">
-          <div class="text-6xl animate-bounce">
+        <div v-else-if="lbState?.status === 'exploded'" class="flex-1 flex flex-col items-center justify-center text-center gap-5 py-6 relative overflow-hidden">
+          <!-- Explosive flash effect -->
+          <div
+            v-if="isKaboomExploding"
+            class="absolute inset-0 bg-gradient-to-t from-rose-600/40 via-amber-500/30 to-white/60 pointer-events-none z-0 animate-kaboom-flash"
+          />
+
+          <button
+            type="button"
+            @click="triggerKaboom"
+            class="text-6xl sm:text-7xl transition-transform cursor-pointer select-none relative z-10 hover:scale-110 active:scale-90"
+            :class="isKaboomExploding ? 'animate-kaboom-pop' : 'animate-bounce'"
+            title="Klik untuk putar efek suara Kaboom lagi!"
+          >
             💥
-          </div>
-          <div class="space-y-2 max-w-lg">
-            <h2 class="text-3xl sm:text-5xl font-black italic uppercase text-rose-500 tracking-wider">
+          </button>
+          <div class="space-y-2 max-w-lg relative z-10">
+            <h2
+              class="text-3xl sm:text-5xl font-black italic uppercase text-rose-500 tracking-wider transition-all duration-300"
+              :class="{ 'scale-110 drop-shadow-[0_0_30px_rgba(244,63,94,0.9)]': isKaboomExploding }"
+            >
               KABOOOOM!
             </h2>
             <p class="text-sm sm:text-base font-mono text-slate-300">
@@ -1657,6 +1700,39 @@ onBeforeUnmount(() => {
 }
 .animate-shake-wrong {
   animation: shakeWrong 0.38s ease-in-out;
+}
+
+@keyframes kaboomShake {
+  0% { transform: skewX(-1deg) translate(0, 0) scale(1); }
+  10% { transform: skewX(-1deg) translate(-14px, 8px) scale(1.02); }
+  20% { transform: skewX(-1deg) translate(14px, -10px) scale(1.03); }
+  30% { transform: skewX(-1deg) translate(-10px, -6px) scale(1.02); }
+  40% { transform: skewX(-1deg) translate(10px, 6px) scale(1.01); }
+  50% { transform: skewX(-1deg) translate(-6px, 3px) scale(1.01); }
+  70% { transform: skewX(-1deg) translate(4px, -2px) scale(1); }
+  100% { transform: skewX(-1deg) translate(0, 0) scale(1); }
+}
+.animate-kaboom-shake {
+  animation: kaboomShake 0.75s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes kaboomFlash {
+  0% { opacity: 0.9; }
+  30% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+.animate-kaboom-flash {
+  animation: kaboomFlash 0.85s ease-out forwards;
+}
+
+@keyframes kaboomPop {
+  0% { transform: scale(0.3) rotate(-20deg); opacity: 0; }
+  45% { transform: scale(1.4) rotate(8deg); opacity: 1; }
+  70% { transform: scale(0.92) rotate(-3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+.animate-kaboom-pop {
+  animation: kaboomPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

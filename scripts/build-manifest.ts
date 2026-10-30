@@ -28,6 +28,8 @@ const MIME: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".map": "application/json; charset=utf-8",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
 };
 
 const sniff = (p: string): string => {
