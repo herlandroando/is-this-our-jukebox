@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import type { TriviaGameState } from "../../shared/types.ts";
 import UiIcon from "../UiIcon.vue";
 import PersonaGameCatalogView from "./PersonaGameCatalogView.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -18,6 +19,9 @@ const emit = defineEmits<{
   (e: "openLeaderboard"): void;
   (e: "openLyricBomb"): void;
 }>();
+
+const modalShellRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalShellRef, () => props.isOpen);
 
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === "Escape" && props.isOpen) {
@@ -61,6 +65,10 @@ const triviaPlayerCount = computed(() => {
 
         <!-- Main Persona 5 Modal Shell -->
         <div
+          ref="modalShellRef"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Arcade Minigame Center"
           class="relative z-10 w-full max-w-3xl bg-[#0b0b14] border-4 border-white p-3.5 sm:p-6 flex flex-col gap-3.5 sm:gap-5 shadow-[6px_6px_0px_#000000] sm:shadow-[12px_12px_0px_#000000] my-auto"
           style="transform: skewX(-1.5deg);"
         >
@@ -94,10 +102,12 @@ const triviaPlayerCount = computed(() => {
               class="shrink-0 h-8 sm:h-9 px-2.5 sm:px-3.5 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-[11px] sm:text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-[3px_3px_0px_#000] sm:shadow-[4px_4px_0px_#000]"
               style="transform: skewX(-12deg);"
               title="Tutup & Kembali (Esc)"
+              aria-label="Tutup & Kembali (Esc)"
               @click="emit('close')"
             >
               <span class="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-current flex items-center justify-center text-[9px] sm:text-[10px] font-black">O</span>
               <span>BACK</span>
+              <span class="kbd-badge text-[9px] bg-black text-[#00e5ff] border-white/50 ml-0.5">ESC</span>
             </button>
           </div>
 

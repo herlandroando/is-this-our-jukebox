@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import type { MemberRole } from "../shared/types.ts";
 import UiIcon from "./UiIcon.vue";
+import { useFocusTrap } from "../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -12,6 +13,9 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "claimRole", passcode: string): void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen, { initialFocusSelector: "input" });
 
 const passcode = ref("");
 const inputRef = ref<HTMLInputElement | null>(null);
@@ -50,13 +54,24 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
-    <div class="passcode-card glass-panel">
+    <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="DJ Passcode Activation"
+      class="passcode-card glass-panel"
+    >
       <header class="modal-header">
         <div class="header-icon-wrap" :class="{ 'is-dj': currentRole === 'dj' }">
           <UiIcon v-if="currentRole === 'dj'" name="mic" :size="22" />
           <UiIcon v-else name="crown" :size="22" />
         </div>
-        <button class="btn-icon close-btn" @click="emit('close')">
+        <button
+          class="btn-icon close-btn flex items-center gap-1.5"
+          aria-label="Tutup modal passcode (Esc)"
+          @click="emit('close')"
+        >
+          <span class="kbd-badge text-[9px]">Esc</span>
           <UiIcon name="x" :size="16" />
         </button>
       </header>

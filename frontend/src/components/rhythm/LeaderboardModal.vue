@@ -3,12 +3,16 @@ import { ref, computed, onMounted, watch } from "vue";
 import type { GlobalUserRanking, QueueTrack, RankedSongSummary, RhythmScoreEntry } from "../../shared/types.ts";
 import { fetchAllRankedSongs, fetchGlobalRankings, fetchTrackLeaderboard } from "../../shared/api.ts";
 import UiIcon from "../UiIcon.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   currentTrack: QueueTrack | null;
   isOpen: boolean;
   onClose: () => void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
 
 type LeaderboardTab = "current" | "songs" | "global";
 const activeTab = ref<LeaderboardTab>("current");
@@ -94,6 +98,10 @@ async function viewSongScores(song: RankedSongSummary) {
     @click.self="onClose"
   >
     <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Leaderboard Kantor"
       class="bg-neutral-900 border border-neutral-800 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-white"
     >
       <!-- Header -->
@@ -107,15 +115,19 @@ async function viewSongScores(song: RankedSongSummary) {
         </div>
         <button
           @click="onClose"
-          class="w-8 h-8 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center justify-center text-neutral-400 hover:text-white transition-colors cursor-pointer"
+          class="h-8 px-2.5 rounded-full bg-neutral-800 hover:bg-neutral-700 flex items-center gap-1.5 text-neutral-400 hover:text-white transition-colors cursor-pointer text-xs"
+          aria-label="Tutup modal leaderboard (Esc)"
         >
-          ✕
+          <span class="kbd-badge text-[9px]">Esc</span>
+          <span>✕</span>
         </button>
       </div>
 
       <!-- Tab Navigation -->
-      <div class="flex border-b border-neutral-800 bg-neutral-950/40 px-5 pt-2">
+      <div role="tablist" class="flex border-b border-neutral-800 bg-neutral-950/40 px-5 pt-2">
         <button
+          role="tab"
+          :aria-selected="activeTab === 'current'"
           @click="activeTab = 'current'"
           class="pb-2.5 px-3 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer"
           :class="
@@ -127,6 +139,8 @@ async function viewSongScores(song: RankedSongSummary) {
           🎵 Lagu Saat Ini
         </button>
         <button
+          role="tab"
+          :aria-selected="activeTab === 'songs'"
           @click="activeTab = 'songs'"
           class="pb-2.5 px-3 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer"
           :class="
@@ -138,6 +152,8 @@ async function viewSongScores(song: RankedSongSummary) {
           📚 Semua Lagu
         </button>
         <button
+          role="tab"
+          :aria-selected="activeTab === 'global'"
           @click="activeTab = 'global'"
           class="pb-2.5 px-3 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer"
           :class="

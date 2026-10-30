@@ -4,6 +4,7 @@ import type { TriviaCategory, TriviaGameSettings, TriviaPresetItem } from "../..
 import { personaAudio } from "../../shared/personaAudio.ts";
 import UiIcon, { type IconName } from "../UiIcon.vue";
 import TriviaPresetManagerModal from "./TriviaPresetManagerModal.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -13,6 +14,9 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "createGame", settings: TriviaGameSettings): void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
 
 interface CategoryItem extends Omit<TriviaCategory, "icon"> {
   icon: IconName;
@@ -239,6 +243,10 @@ onBeforeUnmount(() => {
 
     <!-- Main Persona 5 Heist Setup Shell (Unclipped Ribbon) -->
     <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Operation Guess Briefing"
       class="relative z-10 w-full max-w-2xl sm:max-w-3xl my-auto flex flex-col bg-[#0b0b14] border-4 border-white shadow-[8px_8px_0px_#000000] sm:shadow-[14px_14px_0px_#000000] text-slate-100 animate-in fade-in zoom-in-95 duration-200"
       style="transform: skewX(-1.5deg);"
     >
@@ -285,11 +293,13 @@ onBeforeUnmount(() => {
 
           <button
             type="button"
-            class="h-8 sm:h-9 px-3 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-xs uppercase flex items-center gap-1 transition-all cursor-pointer shadow-[2px_2px_0px_#000] active:scale-95"
+            class="h-8 sm:h-9 px-3 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer shadow-[2px_2px_0px_#000] active:scale-95"
             style="transform: skewX(-8deg);"
             title="Batal (Esc)"
+            aria-label="Batal (Esc)"
             @click="emit('close'); personaAudio.playCursor()"
           >
+            <span class="kbd-badge text-[9px] bg-black text-[#00e5ff] border-white/50">ESC</span>
             <span>CANCEL</span>
           </button>
         </div>

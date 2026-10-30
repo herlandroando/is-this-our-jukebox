@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { jukeboxClient } from "../../shared/ws.ts";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 import {
   getYouTubeAuthStatus,
   startYouTubeLogin,
@@ -17,6 +18,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
 }>();
+
+const modalContainerRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalContainerRef, () => props.isOpen);
 
 const status = ref<YouTubeCookieStatus>({
   hasCookies: false,
@@ -164,6 +168,10 @@ function formatDate(ms?: number): string {
     @click.self="emit('close')"
   >
     <div
+      ref="modalContainerRef"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="yt-auth-title"
       class="glass-panel relative w-full max-w-lg rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-gradient-to-b from-slate-900/95 via-slate-900/98 to-black p-6 sm:p-7 flex flex-col gap-6"
     >
       <!-- Header -->
@@ -179,7 +187,7 @@ function formatDate(ms?: number): string {
             </svg>
           </div>
           <div>
-            <h2 class="text-lg font-black text-white tracking-tight leading-snug">
+            <h2 id="yt-auth-title" class="text-lg font-black text-white tracking-tight leading-snug">
               YouTube Session & Anti-Bot
             </h2>
             <p class="text-xs text-slate-400 font-medium">
@@ -189,9 +197,11 @@ function formatDate(ms?: number): string {
         </div>
 
         <button
-          class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all cursor-pointer"
+          class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+          aria-label="Tutup modal YouTube session (Esc)"
           @click="emit('close')"
         >
+          <span class="kbd-badge text-[9px]">Esc</span>
           <UiIcon name="x" :size="18" />
         </button>
       </div>

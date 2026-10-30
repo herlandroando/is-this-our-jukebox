@@ -6,6 +6,7 @@ import type { TriviaOption, TriviaPlayer } from "../../shared/types.ts";
 import { personaAudio } from "../../shared/personaAudio.ts";
 import UiIcon from "../UiIcon.vue";
 import JukeChanMini from "../mascot/JukeChanMini.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -14,6 +15,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
 
 const triviaState = computed(() => jukeboxClient.triviaState.value);
 const myClientId = computed(() => jukeboxClient.clientId.value);
@@ -757,6 +761,10 @@ onBeforeUnmount(() => {
 
     <!-- Main Persona 5 Battle Stage Container -->
     <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Operation Phantom Guess Trivia"
       class="relative z-10 w-full max-w-4xl lg:max-w-5xl my-auto flex flex-col bg-[#0b0b14] border-4 border-white shadow-[8px_8px_0px_#000000] sm:shadow-[14px_14px_0px_#000000] text-slate-100"
       style="transform: skewX(-1deg);"
     >
@@ -873,11 +881,13 @@ onBeforeUnmount(() => {
           <!-- Close / Back Button -->
           <button
             type="button"
-            class="h-8 sm:h-9 px-2.5 sm:px-3.5 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-xs uppercase flex items-center gap-1 transition-all cursor-pointer shadow-[2px_2px_0px_#000] active:scale-95"
+            class="h-8 sm:h-9 px-2.5 sm:px-3.5 bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white font-black text-xs uppercase flex items-center gap-1.5 transition-all cursor-pointer shadow-[2px_2px_0px_#000] active:scale-95"
             style="transform: skewX(-8deg);"
             :title="isHost ? 'Tutup Game (Esc)' : 'Tinggalkan Lobby (Esc)'"
+            :aria-label="isHost ? 'Tutup Game (Esc)' : 'Tinggalkan Lobby (Esc)'"
             @click="closeOrLeave"
           >
+            <span class="kbd-badge text-[9px] bg-black text-[#00e5ff] border-white/50">ESC</span>
             <span>{{ isHost ? 'TUTUP' : 'KELUAR' }}</span>
           </button>
         </div>

@@ -79,6 +79,7 @@ onBeforeUnmount(() => {
         class="group relative bg-[#e60012] hover:bg-white text-white hover:text-black border-2 border-white px-3 sm:px-4 py-1.5 flex items-center gap-2 font-black text-xs uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 shadow-[4px_4px_0px_#000000]"
         style="transform: skewX(-14deg) rotate(-1.5deg);"
         title="Tutup & Kembali ke Panggung Utama (Esc)"
+        aria-label="Tutup & Kembali ke Panggung Utama (Esc)"
         @click="emit('close')"
       >
         <span class="flex items-center gap-1.5" style="transform: skewX(14deg) rotate(1.5deg);">
@@ -87,6 +88,7 @@ onBeforeUnmount(() => {
             O
           </span>
           <span>BACK</span>
+          <span class="kbd-badge text-[9px] bg-black text-[#00e5ff] border-white/50 ml-1">ESC</span>
         </span>
       </button>
     </div>

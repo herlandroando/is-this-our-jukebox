@@ -5,6 +5,7 @@ import { fetchBeatmap } from "../../shared/api.ts";
 import { jukeboxClient } from "../../shared/ws.ts";
 import { RhythmManiaEngine } from "./RhythmManiaEngine.ts";
 import RhythmResultScreen from "./RhythmResultScreen.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -14,6 +15,9 @@ const props = defineProps<{
   nickname: string;
   onClose: () => void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
 
 // Difficulty selection
 type Difficulty = "easy" | "normal" | "hard";
@@ -343,7 +347,13 @@ function renderCanvas() {
 
 // Keyboard Input Handling (Desktop)
 function handleKeyDown(e: KeyboardEvent) {
-  if (!props.isOpen || !engine || e.repeat) return;
+  if (!props.isOpen) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    props.onClose();
+    return;
+  }
+  if (!engine || e.repeat) return;
   const key = e.key.toUpperCase();
 
   let lane = -1;
@@ -438,6 +448,10 @@ function skipToNextTrackImmediately() {
 <template>
   <div
     v-if="isOpen"
+    ref="modalRef"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Rhythm Mania 4K Game"
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl select-none touch-none overscroll-none animate-in fade-in duration-200"
   >
     <!-- RESULT SCREEN -->
@@ -489,10 +503,12 @@ function skipToNextTrackImmediately() {
           </button>
           <button
             @click="onClose"
-            class="w-8 h-8 rounded-full bg-neutral-800 hover:bg-rose-900 flex items-center justify-center text-xs text-neutral-300 hover:text-white cursor-pointer"
-            title="Keluar"
+            class="h-8 px-2.5 rounded-full bg-neutral-800 hover:bg-rose-900 flex items-center gap-1 text-xs text-neutral-300 hover:text-white cursor-pointer"
+            title="Keluar (Esc)"
+            aria-label="Keluar dari game (Esc)"
           >
-            ✕
+            <span class="kbd-badge text-[9px]">Esc</span>
+            <span>✕</span>
           </button>
         </div>
       </div>

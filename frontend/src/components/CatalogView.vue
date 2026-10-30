@@ -195,6 +195,21 @@ function clearSearch() {
   searchInputRef.value?.focus();
 }
 
+function onSearchInputKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") {
+    if (query.value) {
+      e.preventDefault();
+      clearSearch();
+    }
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    const firstResultBtn = document.querySelector<HTMLElement>(
+      ".search-results-section button, .shelf-card button"
+    );
+    firstResultBtn?.focus();
+  }
+}
+
 function formatDuration(sec: number): string {
   if (!sec || isNaN(sec)) return "0:00";
   const m = Math.floor(sec / 60);
@@ -236,12 +251,16 @@ function handleImageError(e: Event, track: SearchResult) {
           v-model="query"
           type="text"
           placeholder="Cari lagu, musisi, atau paste link YouTube/SoundCloud..."
-          class="w-full bg-transparent border-none outline-none text-sm text-white placeholder-slate-400 font-medium"
+          aria-label="Cari lagu, musisi, atau tautan audio"
+          class="w-full bg-transparent border-none outline-none text-sm text-white placeholder-slate-400 font-medium search-input"
+          @keydown="onSearchInputKeydown"
         />
+        <span v-if="!query" class="kbd-badge ml-2 shrink-0 hidden sm:inline-flex" title="Tekan '/' untuk fokus pencarian">/</span>
         <button
           v-if="query"
           class="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center shrink-0 ml-1 active:scale-90 transition-transform cursor-pointer"
-          title="Clear search"
+          title="Clear search (Esc)"
+          aria-label="Hapus pencarian"
           @click="clearSearch"
         >
           <UiIcon name="x" :size="12" />

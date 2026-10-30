@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { jukeboxClient } from "../../shared/ws.ts";
 import { personaAudio } from "../../shared/personaAudio.ts";
 import UiIcon from "../UiIcon.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -13,6 +14,23 @@ const emit = defineEmits<{
   (e: "selectSong", song: { videoId: string; title: string; artist: string; duration: number; albumArt?: string }): void;
   (e: "randomSong"): void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
+
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && props.isOpen) {
+    emit("close");
+  }
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
+});
 
 const lbState = computed(() => jukeboxClient.lyricBombState.value);
 const pickerTimeLeft = computed(() => lbState.value?.pickerTimeLeft ?? null);
@@ -260,6 +278,10 @@ onMounted(() => {
     class="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn select-none"
   >
     <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Pilih Lagu Bom Lirik"
       class="bg-[#121220] border-2 border-white w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-[8px_8px_0px_#000] overflow-hidden"
       style="transform: skewX(-1deg);"
     >
@@ -308,9 +330,11 @@ onMounted(() => {
           <button
             type="button"
             @click="$emit('close')"
-            class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+            class="h-8 px-2.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+            aria-label="Tutup pencarian lagu (Esc)"
           >
-            <UiIcon name="x" class="w-5 h-5" />
+            <span class="kbd-badge text-[9px]">Esc</span>
+            <UiIcon name="x" class="w-4 h-4" />
           </button>
         </div>
       </div>

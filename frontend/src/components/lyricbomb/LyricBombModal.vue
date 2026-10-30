@@ -7,6 +7,7 @@ import type { LyricBombPlayer, LyricBombPodiumEntry, LyricBombSegment } from "..
 import UiIcon from "../UiIcon.vue";
 import JukeChanMini from "../mascot/JukeChanMini.vue";
 import LyricBombSongPickerModal from "./LyricBombSongPickerModal.vue";
+import { useFocusTrap } from "../../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -15,6 +16,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
 }>();
+
+const modalRef = ref<HTMLElement | null>(null);
+useFocusTrap(modalRef, () => props.isOpen);
 
 const lbState = computed(() => jukeboxClient.lyricBombState.value);
 const myClientId = computed(() => jukeboxClient.clientId.value);
@@ -644,7 +648,19 @@ function handleClose() {
   emit("close");
 }
 
+function handleKeydown(e: KeyboardEvent) {
+  if (!props.isOpen) return;
+  if (e.key === "Escape") {
+    if (isSongPickerOpen.value) {
+      isSongPickerOpen.value = false;
+      return;
+    }
+    handleClose();
+  }
+}
+
 onMounted(() => {
+  window.addEventListener("keydown", handleKeydown);
   const savedChoice = localStorage.getItem("lyricbomb_speaker_choice") as "host" | "self" | null;
   if (savedChoice === "self") {
     speakerChoice.value = "self";
@@ -677,6 +693,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
   if (wrongTapTimer) clearTimeout(wrongTapTimer);
   if (audioEl.value) {
     audioEl.value.pause();
@@ -699,6 +716,10 @@ onBeforeUnmount(() => {
     ></audio>
 
     <div
+      ref="modalRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Lyric Bomb Minigame"
       class="relative bg-[#10101c] border-2 border-white w-full max-w-4xl h-[93vh] max-h-[860px] flex flex-col rounded-3xl shadow-[10px_10px_0px_#000] overflow-hidden transition-all"
       :class="{
         'ring-4 ring-rose-600': isMyTurn && lbState?.status === 'defusing',
@@ -836,8 +857,10 @@ onBeforeUnmount(() => {
           <button
             type="button"
             @click="handleClose"
-            class="px-2.5 py-1.5 sm:px-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-wider border border-white rounded-lg transition-colors flex items-center gap-1 shadow-sm cursor-pointer"
+            class="px-2.5 py-1.5 sm:px-3 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs uppercase tracking-wider border border-white rounded-lg transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+            :aria-label="isHost ? 'Tutup Game (Esc)' : 'Keluar dari Game (Esc)'"
           >
+            <span class="kbd-badge text-[9px] bg-black/60 text-white border-white/40">Esc</span>
             <UiIcon name="x" class="w-4 h-4" />
             <span class="hidden sm:inline">{{ isHost ? 'Tutup Game' : 'Keluar' }}</span>
           </button>

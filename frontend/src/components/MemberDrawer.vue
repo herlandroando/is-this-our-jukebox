@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import type { MemberInfo, MemberRole } from "../shared/types.ts";
 import UiIcon, { type IconName } from "./UiIcon.vue";
+import { useFocusTrap } from "../shared/useFocusTrap.ts";
 
 const props = defineProps<{
   isOpen: boolean;
@@ -15,6 +16,9 @@ const emit = defineEmits<{
   (e: "setRole", clientId: string, role: MemberRole): void;
   (e: "setDjPasscode", passcode: string): void;
 }>();
+
+const drawerRef = ref<HTMLElement | null>(null);
+useFocusTrap(drawerRef, () => props.isOpen);
 
 const newPasscode = ref("");
 const isEditingPasscode = ref(false);
@@ -54,7 +58,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div v-if="isOpen" class="drawer-backdrop" @click.self="emit('close')">
-    <aside class="drawer-panel glass-panel">
+    <aside
+      ref="drawerRef"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Room Members & Roles"
+      class="drawer-panel glass-panel"
+    >
       <!-- Drawer Header -->
       <header class="drawer-header">
         <div class="header-title">
@@ -66,7 +76,12 @@ onBeforeUnmount(() => {
             <span class="member-count tabular-nums">{{ members.length }} {{ members.length === 1 ? 'device' : 'devices' }} connected</span>
           </div>
         </div>
-        <button class="btn-icon close-btn" @click="emit('close')">
+        <button
+          class="btn-icon close-btn flex items-center gap-1.5"
+          aria-label="Tutup drawer member (Esc)"
+          @click="emit('close')"
+        >
+          <span class="kbd-badge text-[9px]">Esc</span>
           <UiIcon name="x" :size="16" />
         </button>
       </header>
