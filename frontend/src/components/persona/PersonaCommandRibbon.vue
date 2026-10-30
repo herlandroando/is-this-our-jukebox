@@ -31,7 +31,9 @@ const emit = defineEmits<{
 <template>
   <button
     type="button"
-    class="p5-command-ribbon group relative text-left select-none transition-all duration-150 cursor-pointer focus:outline-none"
+    class="p5-command-ribbon group relative text-left select-none transition-all duration-150 cursor-pointer"
+    :aria-label="label"
+    :aria-pressed="active"
     :class="[
       active ? 'scale-105 z-20' : 'hover:scale-[1.03] active:scale-[0.98] z-10',
       size === 'sm' ? 'h-9 px-3 text-xs' : size === 'lg' ? 'h-14 px-6 text-base' : 'h-11 sm:h-12 px-4 sm:px-5 text-sm sm:text-base',

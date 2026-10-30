@@ -122,6 +122,7 @@ onBeforeUnmount(() => {
               (emojiCombos[emoji] || 0) > 1,
           }"
           :title="`React ${emoji}`"
+          :aria-label="`React with ${emoji}`"
           @click="onReactionTap(emoji)"
         >
           <span class="select-none transform transition-transform duration-75">{{ emoji }}</span>

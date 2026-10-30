@@ -222,6 +222,7 @@ function handleVolumeClick(e: MouseEvent) {
             ]"
             style="transform: skewX(-12deg);"
             :title="isDjOrHost ? (isPlaying ? 'Pause' : 'Play') : 'Hanya DJ/Host yang dapat memutar musik'"
+            :aria-label="isPlaying ? 'Pause playback' : 'Start playback'"
             @click="emit('togglePlay')"
           >
             <UiIcon :name="isPlaying ? 'pause' : 'play'" :size="13" />
@@ -235,6 +236,7 @@ function handleVolumeClick(e: MouseEvent) {
             class="h-8 px-2.5 bg-black border-2 border-white text-white font-black text-xs uppercase tracking-wider flex items-center gap-1 transition-transform cursor-pointer hover:bg-white/10 active:scale-90 shadow-[3px_3px_0px_#000]"
             style="transform: skewX(-12deg);"
             title="Lewati lagu (DJ/Host)"
+            aria-label="Skip to next track"
             @click="emit('skip')"
           >
             <UiIcon name="skip-forward" :size="12" />
@@ -252,6 +254,7 @@ function handleVolumeClick(e: MouseEvent) {
             ]"
             style="transform: skewX(-12deg);"
             title="Mode Karaoke (Vocal Reducer)"
+            aria-label="Toggle karaoke vocal cut"
             @click="emit('toggleKaraoke')"
           >
             <UiIcon name="mic" :size="12" />
@@ -267,6 +270,7 @@ function handleVolumeClick(e: MouseEvent) {
             class="h-8 px-2.5 bg-black border-2 border-white/50 hover:border-white text-white font-black text-xs uppercase flex items-center gap-1 cursor-pointer active:scale-90 shadow-[3px_3px_0px_#000]"
             style="transform: skewX(-12deg);"
             title="Buka Lirik Lagu"
+            aria-label="Buka lirik lagu"
             @click="emit('openLyrics')"
           >
             <UiIcon name="music" :size="12" />
@@ -283,7 +287,8 @@ function handleVolumeClick(e: MouseEvent) {
                 : 'bg-black text-white border-white/50 hover:border-white shadow-[3px_3px_0px_#000]',
             ]"
             style="transform: skewX(-12deg);"
-            title="Tambah ke Favorit"
+            :title="isFavorite ? 'Hapus dari Favorit' : 'Tambah ke Favorit'"
+            :aria-label="isFavorite ? 'Hapus dari Favorit' : 'Tambah ke Favorit'"
             @click="emit('toggleFavorite')"
           >
             <UiIcon :name="isFavorite ? 'star-filled' : 'star'" :size="13" />

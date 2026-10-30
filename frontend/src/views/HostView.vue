@@ -600,6 +600,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
           class="h-8 px-2.5 bg-amber-400 hover:bg-white text-black border-2 border-white font-black text-xs uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer active:scale-95 shadow-[3px_3px_0px_#000]"
           style="transform: skewX(-12deg);"
           title="Lihat Papan Peringkat osu!mania 4K"
+          aria-label="Lihat Papan Peringkat osu!mania 4K"
           @click="isLeaderboardModalOpen = true"
         >
           <span>🏆 RANK</span>
@@ -616,6 +617,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
           "
           style="transform: skewX(-12deg);"
           title="Status Akun YouTube & Anti-Bot Cookies"
+          aria-label="Status Akun YouTube & Anti-Bot Cookies"
           @click="isYouTubeAuthModalOpen = true"
         >
           <span
@@ -632,6 +634,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
           class="h-8 px-3 border-2 border-white bg-[#e60012] hover:bg-white text-white hover:text-black font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-[3px_3px_0px_#000]"
           style="transform: skewX(-12deg);"
           title="Buka Katalog Minigame Kantor (Tebak Lagu, Lyric Bomb & lainnya)"
+          aria-label="Buka Katalog Minigame Kantor"
           @click="isGameHubOpen = true"
         >
           <span>🎮 GAMES</span>
@@ -643,6 +646,7 @@ function onMilestoneSurge(payload: { combo: number; emoji: string }) {
           class="h-8 px-3 border-2 border-white bg-[#00e5ff] hover:bg-white text-black font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-[3px_3px_0px_#000]"
           style="transform: skewX(-12deg);"
           title="Kelola member ruangan & DJ passcode"
+          aria-label="Kelola member ruangan dan DJ passcode"
           @click="isMemberDrawerOpen = true"
         >
           <UiIcon name="users" :size="13" />

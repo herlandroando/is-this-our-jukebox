@@ -200,6 +200,7 @@ onBeforeUnmount(() => {
         <button
           class="glass-pill w-8 h-8 flex items-center justify-center text-slate-300 hover:text-white shrink-0 active:scale-90 transition-transform cursor-pointer"
           title="Back to Queue"
+          aria-label="Back to Queue"
           @click="emit('back')"
         >
           <UiIcon name="list-music" :size="15" />

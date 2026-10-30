@@ -120,6 +120,7 @@ const displayArtist = computed(() => {
         class="star-btn"
         :class="{ active: isFavorite(track.id) }"
         :title="isFavorite(track.id) ? 'Remove from Favorites' : 'Save to Favorites'"
+        :aria-label="isFavorite(track.id) ? 'Hapus dari lagu favorit' : 'Simpan ke lagu favorit'"
         @click="toggleFavorite(track)"
       >
         <UiIcon v-if="isFavorite(track.id)" name="star-filled" :size="14" />
@@ -130,6 +131,7 @@ const displayArtist = computed(() => {
         class="vote-btn"
         :class="{ voted: hasVoted }"
         :title="votersTooltip"
+        :aria-label="hasVoted ? 'Batalkan vote untuk ' + track.title : 'Vote untuk ' + track.title"
         @click="toggleVote"
       >
         <UiIcon name="arrow-up" :size="13" class="vote-icon" />
@@ -140,6 +142,7 @@ const displayArtist = computed(() => {
         v-if="canRemove"
         class="btn-icon remove-btn"
         title="Remove from queue (Host / DJ)"
+        :aria-label="'Hapus ' + track.title + ' dari antrean'"
         @click="emit('removeTrack', track.queueId)"
       >
         <UiIcon name="trash-2" :size="13" />

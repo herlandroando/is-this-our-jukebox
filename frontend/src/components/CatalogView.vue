@@ -376,6 +376,7 @@ function handleImageError(e: Event, track: SearchResult) {
               class="glass-pill w-8 h-8 flex items-center justify-center active:scale-90 transition-all"
               :class="isFavorite(track.id) ? 'text-amber-400 bg-amber-400/15 border-amber-400/40' : 'text-slate-400 hover:text-amber-300'"
               :title="isFavorite(track.id) ? 'Remove Favorite' : 'Save to Favorites'"
+              :aria-label="isFavorite(track.id) ? 'Remove from favorites' : 'Save to favorites'"
               @click="handleToggleFavorite(track)"
             >
               <UiIcon v-if="isFavorite(track.id)" name="star-filled" :size="13" />
@@ -385,6 +386,7 @@ function handleImageError(e: Event, track: SearchResult) {
             <button
               class="btn-primary text-xs px-3 py-1.5 flex items-center gap-1 active:scale-95 transition-all"
               :class="requestedIds.has(track.id) ? 'bg-emerald-600/80 border-emerald-400/50 text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]' : ''"
+              :aria-label="requestedIds.has(track.id) ? 'Track already queued' : 'Request track ' + track.title"
               @click="handleRequest(track)"
             >
               <UiIcon v-if="requestedIds.has(track.id)" name="check" :size="12" :strokeWidth="2.5" />
